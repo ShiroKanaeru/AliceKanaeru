@@ -1,0 +1,726 @@
+--====================================================--
+-- ALICE CRYSTAL HUB
+-- Obsidian UI / AliceHub Style
+--====================================================--
+
+if getgenv().AliceCrystalHubLoaded then
+    warn("[Alice Crystal Hub] Already loaded")
+    return
+end
+
+getgenv().AliceCrystalHubLoaded = true
+
+--====================================================--
+-- UI LIBRARY
+--====================================================--
+
+local REPO =
+    "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+
+local Library =
+    loadstring(game:HttpGet(REPO .. "Library.lua"))()
+
+local ThemeManager =
+    loadstring(game:HttpGet(REPO .. "addons/ThemeManager.lua"))()
+
+local SaveManager =
+    loadstring(game:HttpGet(REPO .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+--====================================================--
+-- SERVICES
+--====================================================--
+
+local Players =
+    game:GetService("Players")
+
+local ReplicatedStorage =
+    game:GetService("ReplicatedStorage")
+
+local LocalPlayer =
+    Players.LocalPlayer
+
+--====================================================--
+-- HELPERS
+--====================================================--
+
+local function getRemotes()
+    return ReplicatedStorage:FindFirstChild("Remotes")
+end
+
+local function getCrystalTools()
+
+    local crystals = {}
+
+    local function scan(container)
+
+        if not container then
+            return
+        end
+
+        for _, item in ipairs(container:GetChildren()) do
+
+            if item:IsA("Tool")
+            and item:GetAttribute("Tier") ~= nil
+            and item:GetAttribute("Value") ~= nil then
+
+                table.insert(crystals, item)
+            end
+        end
+    end
+
+    scan(
+        LocalPlayer:FindFirstChildOfClass("Backpack")
+    )
+
+    scan(
+        LocalPlayer.Character
+    )
+
+    return crystals
+end
+
+local function getOwnPlot()
+
+    local things =
+        workspace:FindFirstChild("Things")
+
+    local plots =
+        things and things:FindFirstChild("Plots")
+
+    local slots =
+        plots and plots:FindFirstChild("Slots")
+
+    if not slots then
+        return nil
+    end
+
+    for _, plot in ipairs(slots:GetChildren()) do
+
+        if plot.Name == LocalPlayer.Name then
+            return plot
+        end
+    end
+
+    return nil
+end
+
+local function checkRemote(name)
+
+    local remotes = getRemotes()
+
+    if not remotes then
+        return nil
+    end
+
+    return remotes:FindFirstChild(name)
+end
+
+local function notify(title, description, time)
+
+    Library:Notify({
+        Title = title,
+        Description = description,
+        Time = time or 3
+    })
+end
+
+--====================================================--
+-- WINDOW
+--====================================================--
+
+local Window =
+    Library:CreateWindow({
+
+        Title = "ALICE CRYSTAL HUB",
+
+        Footer =
+            "By ShiroKanaeru",
+
+        NotifySide =
+            "Right",
+
+        ShowCustomCursor =
+            true
+    })
+
+local Tabs = {
+
+    Main =
+        Window:AddTab(
+            "Main",
+            "gem"
+        ),
+
+    Inventory =
+        Window:AddTab(
+            "Inventory",
+            "package"
+        ),
+
+    Session =
+        Window:AddTab(
+            "Session",
+            "server"
+        ),
+
+    Settings =
+        Window:AddTab(
+            "Settings",
+            "settings"
+        )
+}
+
+--====================================================--
+-- MAIN TAB
+--====================================================--
+
+local CrystalGroup =
+    Tabs.Main:AddLeftGroupbox(
+        "Crystal Tool"
+    )
+
+local StatusGroup =
+    Tabs.Main:AddRightGroupbox(
+        "Status"
+    )
+
+--====================================================--
+-- CRYSTAL COUNT
+--====================================================--
+
+local CrystalCountLabel =
+    StatusGroup:AddLabel(
+        "Crystals: 0"
+    )
+
+local PlotStatusLabel =
+    StatusGroup:AddLabel(
+        "Plot: Unknown"
+    )
+
+local RemoteStatusLabel =
+    StatusGroup:AddLabel(
+        "Remotes: Unknown"
+    )
+
+local function refreshStatus()
+
+    local crystals =
+        getCrystalTools()
+
+    local plot =
+        getOwnPlot()
+
+    local remoteNames = {
+        "TakeOutAllCrystals",
+        "ToggleFavorite",
+        "GoHome",
+        "SellRequest"
+    }
+
+    local found = 0
+
+    for _, name in ipairs(remoteNames) do
+
+        if checkRemote(name) then
+            found += 1
+        end
+    end
+
+    CrystalCountLabel:SetText(
+        "Crystals: "
+        .. tostring(#crystals)
+    )
+
+    PlotStatusLabel:SetText(
+        "Plot: "
+        .. (plot and "Found" or "Not Found")
+    )
+
+    RemoteStatusLabel:SetText(
+        "Remotes: "
+        .. tostring(found)
+        .. "/"
+        .. tostring(#remoteNames)
+    )
+end
+
+CrystalGroup:AddButton({
+
+    Text =
+        "Refresh Status",
+
+    Func = function()
+
+        refreshStatus()
+
+        notify(
+            "Alice Crystal Hub",
+            "Status refreshed"
+        )
+    end
+})
+
+CrystalGroup:AddButton({
+
+    Text =
+        "Scan Crystals",
+
+    Func = function()
+
+        local crystals =
+            getCrystalTools()
+
+        notify(
+            "Crystal Scanner",
+            "Found "
+            .. tostring(#crystals)
+            .. " crystal(s)",
+            4
+        )
+    end
+})
+
+CrystalGroup:AddButton({
+
+    Text =
+        "Check Plot",
+
+    Func = function()
+
+        local plot =
+            getOwnPlot()
+
+        if plot then
+
+            notify(
+                "Plot Check",
+                "Plot found:\n"
+                .. plot:GetFullName(),
+                5
+            )
+
+        else
+
+            notify(
+                "Plot Check",
+                "Player plot not found",
+                4
+            )
+        end
+    end
+})
+
+--====================================================--
+-- REMOTE CHECK
+--====================================================--
+
+local RemoteGroup =
+    Tabs.Main:AddLeftGroupbox(
+        "Remote Check"
+    )
+
+RemoteGroup:AddButton({
+
+    Text =
+        "Check All Remotes",
+
+    Func = function()
+
+        local names = {
+            "TakeOutAllCrystals",
+            "ToggleFavorite",
+            "GoHome",
+            "SellRequest"
+        }
+
+        local found = 0
+
+        for _, name in ipairs(names) do
+
+            local remote =
+                checkRemote(name)
+
+            if remote then
+
+                found += 1
+
+                print(
+                    "[Alice Remote]",
+                    name,
+                    "=>",
+                    remote.ClassName,
+                    remote:GetFullName()
+                )
+
+            else
+
+                warn(
+                    "[Alice Remote Missing]",
+                    name
+                )
+            end
+        end
+
+        refreshStatus()
+
+        notify(
+            "Remote Check",
+            tostring(found)
+            .. "/"
+            .. tostring(#names)
+            .. " remotes found",
+            4
+        )
+    end
+})
+
+RemoteGroup:AddButton({
+
+    Text =
+        "Copy Session JobId",
+
+    Func = function()
+
+        if setclipboard then
+
+            setclipboard(
+                tostring(game.JobId)
+            )
+
+            notify(
+                "Clipboard",
+                "JobId copied"
+            )
+
+        else
+
+            notify(
+                "Clipboard",
+                "setclipboard unavailable"
+            )
+        end
+    end
+})
+
+--====================================================--
+-- DUPE TOOL PLACEHOLDER
+--====================================================--
+
+local DupeGroup =
+    Tabs.Main:AddRightGroupbox(
+        "Dupe Tool"
+    )
+
+DupeGroup:AddLabel(
+    "Sequence Status:"
+)
+
+local DupeStateLabel =
+    DupeGroup:AddLabel(
+        "Idle"
+    )
+
+DupeGroup:AddButton({
+
+    Text =
+        "Test Sequence UI",
+
+    Func = function()
+
+        DupeStateLabel:SetText(
+            "Checking..."
+        )
+
+        task.wait(0.5)
+
+        refreshStatus()
+
+        DupeStateLabel:SetText(
+            "Ready"
+        )
+
+        notify(
+            "Dupe Tool",
+            "UI sequence test completed"
+        )
+    end
+})
+
+DupeGroup:AddButton({
+
+    Text =
+        "Reset Tool State",
+
+    Func = function()
+
+        DupeStateLabel:SetText(
+            "Idle"
+        )
+
+        notify(
+            "Dupe Tool",
+            "State reset"
+        )
+    end
+})
+
+--====================================================--
+-- INVENTORY TAB
+--====================================================--
+
+local InventoryGroup =
+    Tabs.Inventory:AddLeftGroupbox(
+        "Crystal Inventory"
+    )
+
+local InventoryInfo =
+    Tabs.Inventory:AddRightGroupbox(
+        "Inventory Info"
+    )
+
+InventoryGroup:AddButton({
+
+    Text =
+        "List Crystals",
+
+    Func = function()
+
+        local crystals =
+            getCrystalTools()
+
+        print(
+            "========== ALICE CRYSTALS =========="
+        )
+
+        for index, crystal in ipairs(crystals) do
+
+            print(
+                index,
+                crystal.Name,
+                "Tier:",
+                crystal:GetAttribute("Tier"),
+                "Value:",
+                crystal:GetAttribute("Value")
+            )
+        end
+
+        print(
+            "===================================="
+        )
+
+        notify(
+            "Inventory",
+            tostring(#crystals)
+            .. " crystals printed to console",
+            4
+        )
+    end
+})
+
+InventoryGroup:AddButton({
+
+    Text =
+        "Refresh Inventory",
+
+    Func = function()
+
+        local crystals =
+            getCrystalTools()
+
+        notify(
+            "Inventory",
+            "Current crystals: "
+            .. tostring(#crystals),
+            3
+        )
+
+        refreshStatus()
+    end
+})
+
+InventoryInfo:AddLabel(
+    "Crystal detector:"
+)
+
+InventoryInfo:AddLabel(
+    "Tool + Tier attribute + Value attribute"
+)
+
+InventoryInfo:AddLabel(
+    "Scans Backpack + Character"
+)
+
+--====================================================--
+-- SESSION TAB
+--====================================================--
+
+local SessionGroup =
+    Tabs.Session:AddLeftGroupbox(
+        "Player Session"
+    )
+
+local ServerGroup =
+    Tabs.Session:AddRightGroupbox(
+        "Server"
+    )
+
+SessionGroup:AddLabel(
+    "Username: "
+    .. LocalPlayer.Name
+)
+
+SessionGroup:AddLabel(
+    "UserId: "
+    .. tostring(LocalPlayer.UserId)
+)
+
+SessionGroup:AddButton({
+
+    Text =
+        "Show Session Info",
+
+    Func = function()
+
+        notify(
+            "Session",
+
+            "Username: "
+            .. LocalPlayer.Name
+            .. "\nUserId: "
+            .. tostring(LocalPlayer.UserId)
+            .. "\nPlaceId: "
+            .. tostring(game.PlaceId)
+            .. "\nJobId: "
+            .. tostring(game.JobId),
+
+            6
+        )
+    end
+})
+
+ServerGroup:AddLabel(
+    "PlaceId:"
+)
+
+ServerGroup:AddLabel(
+    tostring(game.PlaceId)
+)
+
+ServerGroup:AddLabel(
+    "JobId:"
+)
+
+ServerGroup:AddLabel(
+    tostring(game.JobId)
+)
+
+ServerGroup:AddButton({
+
+    Text =
+        "Print Full Session",
+
+    Func = function()
+
+        print(
+            "========== ALICE SESSION =========="
+        )
+
+        print(
+            "Username:",
+            LocalPlayer.Name
+        )
+
+        print(
+            "UserId:",
+            LocalPlayer.UserId
+        )
+
+        print(
+            "PlaceId:",
+            game.PlaceId
+        )
+
+        print(
+            "GameId:",
+            game.GameId
+        )
+
+        print(
+            "JobId:",
+            game.JobId
+        )
+
+        print(
+            "==================================="
+        )
+
+        notify(
+            "Session",
+            "Printed to console"
+        )
+    end
+})
+
+--====================================================--
+-- SETTINGS
+--====================================================--
+
+ThemeManager:SetLibrary(
+    Library
+)
+
+SaveManager:SetLibrary(
+    Library
+)
+
+SaveManager:IgnoreThemeSettings()
+
+ThemeManager:SetFolder(
+    "AliceHub"
+)
+
+SaveManager:SetFolder(
+    "AliceHub/CrystalHub"
+)
+
+SaveManager:BuildConfigSection(
+    Tabs.Settings
+)
+
+ThemeManager:ApplyToTab(
+    Tabs.Settings
+)
+
+--====================================================--
+-- UNLOAD
+--====================================================--
+
+Library:OnUnload(function()
+
+    getgenv().AliceCrystalHubLoaded = nil
+
+    print(
+        "[Alice Crystal Hub] Unloaded"
+    )
+end)
+
+--====================================================--
+-- INITIAL STATUS
+--====================================================--
+
+task.spawn(function()
+
+    task.wait(1)
+
+    refreshStatus()
+
+    notify(
+        "Alice Crystal Hub",
+        "Loaded successfully",
+        3
+    )
+end)
