@@ -1,457 +1,534 @@
---====================================================
--- ALICE PASAR SETAN - FUNCTION DUMPER V2
--- Local/read-only module function inspection
---====================================================
+--=========================================================
+-- ALICE DEEP DUMPER V3
+-- Passive client-side audit only.
+-- Does NOT FireServer / InvokeServer.
+--=========================================================
 
-local RS = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local TARGET_WORDS = {
+    "StorageMove",
+    "Trade",
+    "TradeGetInventory",
+    "TradeUpdateOffer",
+    "TradeSetReady",
+    "PetiArwah",
+    "PetiArwahPull",
+    "PetiArwahTrade",
+    "Quest",
+    "QuestClaim",
+    "ShopBuy",
+    "GrantShards",
+    "AdminGrantCoins",
+    "AdminPanel",
+    "Coins",
+    "Inventory",
+    "Storage",
+}
 
 local output = {}
-local visited = {}
 
-local function add(text)
+local function log(...)
+    local t = {}
+
+    for i = 1, select("#", ...) do
+        t[#t + 1] = tostring(select(i, ...))
+    end
+
+    output[#output + 1] = table.concat(t, " ")
+end
+
+local function divider(title)
+    log("")
+    log("==============================================================")
+    log(title)
+    log("==============================================================")
+end
+
+local function containsTarget(text)
     text = tostring(text)
-    table.insert(output, text)
-    print(text)
-end
 
-local function indent(n)
-    return string.rep("    ", n)
-end
+    local lower = text:lower()
 
-local function serialize(value, depth)
-    depth = depth or 0
-
-    local t = typeof(value)
-
-    if t == "nil" then
-        return "nil"
-
-    elseif t == "string" then
-        return string.format("%q", value)
-
-    elseif t == "number" or t == "boolean" then
-        return tostring(value)
-
-    elseif t == "Vector3"
-        or t == "Vector2"
-        or t == "CFrame"
-        or t == "Color3"
-        or t == "UDim"
-        or t == "UDim2"
-        or t == "BrickColor"
-        or t == "EnumItem"
-        or t == "NumberRange"
-    then
-        return tostring(value)
-
-    elseif t == "Instance" then
-        return string.format(
-            "<Instance %s | %s>",
-            value.ClassName,
-            value:GetFullName()
-        )
-
-    elseif t == "function" then
-        return "<function>"
-
-    elseif t == "thread" then
-        return "<thread>"
-
-    elseif t == "userdata" then
-        return "<userdata>"
-
-    elseif t ~= "table" then
-        return "<" .. t .. ": " .. tostring(value) .. ">"
-    end
-
-    if visited[value] then
-        return "<circular>"
-    end
-
-    visited[value] = true
-
-    local keys = {}
-
-    for k in pairs(value) do
-        table.insert(keys, k)
-    end
-
-    table.sort(keys, function(a, b)
-        return tostring(a) < tostring(b)
-    end)
-
-    local parts = {"{"}
-
-    for _, k in ipairs(keys) do
-        table.insert(
-            parts,
-            "\n"
-            .. indent(depth + 1)
-            .. "["
-            .. serialize(k, 0)
-            .. "] = "
-            .. serialize(value[k], depth + 1)
-            .. ","
-        )
-    end
-
-    if #keys > 0 then
-        table.insert(parts, "\n" .. indent(depth))
-    end
-
-    table.insert(parts, "}")
-
-    visited[value] = nil
-
-    return table.concat(parts)
-end
-
-local function getModule(name)
-    local obj = RS:FindFirstChild(name)
-
-    if obj and obj:IsA("ModuleScript") then
-        return obj
-    end
-
-    for _, v in ipairs(RS:GetDescendants()) do
-        if v:IsA("ModuleScript") and v.Name == name then
-            return v
+    for _, word in ipairs(TARGET_WORDS) do
+        if lower:find(word:lower(), 1, true) then
+            return true, word
         end
     end
 
-    return nil
+    return false
 end
 
-local function requireSafe(name)
-    local module = getModule(name)
-
-    if not module then
-        add("[ERROR] Module not found: " .. name)
-        return nil
-    end
-
+local function safeGetFullName(obj)
     local ok, result = pcall(function()
-        return require(module)
+        return obj:GetFullName()
     end)
 
-    if not ok then
-        add("[ERROR] Require failed: " .. name)
-        add(result)
-        return nil
-    end
-
-    return result
+    return ok and result or tostring(obj)
 end
 
-local function callFunction(label, fn, ...)
-    add("")
-    add("--------------------------------------------------")
-    add("CALL: " .. label)
-    add("--------------------------------------------------")
+--=========================================================
+-- REMOTE SCANNER
+--=========================================================
 
-    if type(fn) ~= "function" then
-        add("NOT A FUNCTION")
+divider("REMOTE INVENTORY")
+
+local remoteCount = 0
+
+for _, obj in ipairs(game:GetDescendants()) do
+    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+        remoteCount += 1
+
+        local path = safeGetFullName(obj)
+
+        local interesting, keyword = containsTarget(
+            obj.Name .. " " .. path
+        )
+
+        log(
+            interesting and "[MATCH]" or "[REMOTE]",
+            obj.ClassName,
+            "|",
+            obj.Name,
+            "|",
+            path,
+            interesting and ("| keyword=" .. keyword) or ""
+        )
+    end
+end
+
+log("")
+log("Total remotes:", remoteCount)
+
+--=========================================================
+-- MODULE LIST
+--=========================================================
+
+divider("MODULESCRIPT INVENTORY")
+
+local modules = {}
+
+for _, obj in ipairs(game:GetDescendants()) do
+    if obj:IsA("ModuleScript") then
+        modules[#modules + 1] = obj
+
+        local path = safeGetFullName(obj)
+        local interesting, keyword = containsTarget(path)
+
+        if interesting then
+            log(
+                "[MATCH MODULE]",
+                path,
+                "| keyword=" .. keyword
+            )
+        else
+            log("[MODULE]", path)
+        end
+    end
+end
+
+log("")
+log("Total modules:", #modules)
+
+--=========================================================
+-- REQUIRE MODULES
+--=========================================================
+
+divider("MODULE EXPORTS")
+
+local visited = {}
+
+local function dumpTable(tbl, depth, path)
+    depth = depth or 0
+    path = path or "root"
+
+    if depth > 4 then
+        log(string.rep("  ", depth) .. path .. " = <MAX DEPTH>")
         return
     end
 
-    local args = {...}
-
-    local ok, result1, result2, result3, result4 =
-        pcall(function()
-            return fn(table.unpack(args))
-        end)
-
-    if not ok then
-        add("ERROR:")
-        add(result1)
+    if visited[tbl] then
+        log(string.rep("  ", depth) .. path .. " = <ALREADY VISITED>")
         return
     end
 
-    visited = {}
+    visited[tbl] = true
 
-    add("RETURN #1:")
-    add(serialize(result1, 0))
+    for key, value in pairs(tbl) do
+        local keyString = tostring(key)
+        local valueType = typeof(value)
 
-    if result2 ~= nil then
-        visited = {}
-        add("RETURN #2:")
-        add(serialize(result2, 0))
-    end
+        local prefix = string.rep("  ", depth)
 
-    if result3 ~= nil then
-        visited = {}
-        add("RETURN #3:")
-        add(serialize(result3, 0))
-    end
+        local interesting, keyword = containsTarget(
+            keyString .. " " .. tostring(value)
+        )
 
-    if result4 ~= nil then
-        visited = {}
-        add("RETURN #4:")
-        add(serialize(result4, 0))
+        if valueType == "table" then
+            log(
+                prefix ..
+                (interesting and "[MATCH] " or "") ..
+                keyString ..
+                " = table" ..
+                (interesting and (" | keyword=" .. keyword) or "")
+            )
+
+            dumpTable(
+                value,
+                depth + 1,
+                path .. "." .. keyString
+            )
+
+        elseif valueType == "function" then
+            log(
+                prefix ..
+                (interesting and "[MATCH] " or "") ..
+                keyString ..
+                " = <function>" ..
+                (interesting and (" | keyword=" .. keyword) or "")
+            )
+
+        elseif valueType == "Instance" then
+            log(
+                prefix ..
+                (interesting and "[MATCH] " or "") ..
+                keyString ..
+                " = Instance(" ..
+                value.ClassName ..
+                ") " ..
+                safeGetFullName(value)
+            )
+
+        else
+            log(
+                prefix ..
+                (interesting and "[MATCH] " or "") ..
+                keyString ..
+                " = " ..
+                tostring(value) ..
+                " [" ..
+                valueType ..
+                "]"
+            )
+        end
     end
 end
 
-add("==================================================")
-add(" ALICE PASAR SETAN FUNCTION DUMPER V2")
-add("==================================================")
+for _, module in ipairs(modules) do
+    local modulePath = safeGetFullName(module)
 
---====================================================
--- REMOTE REGISTRY
---====================================================
+    local ok, result = pcall(require, module)
 
-local RemoteRegistry = requireSafe("RemoteRegistry")
+    if ok then
+        local moduleInteresting = containsTarget(modulePath)
 
-if RemoteRegistry then
-    callFunction(
-        "RemoteRegistry.dump()",
-        RemoteRegistry.dump
-    )
+        if moduleInteresting then
+            log("")
+            log("------------------------------------------------------------")
+            log("[MODULE REQUIRE]", modulePath)
+        end
 
-    if type(RemoteRegistry.wadah) == "function" then
-        callFunction(
-            "RemoteRegistry.wadah()",
-            RemoteRegistry.wadah
-        )
-    end
+        if type(result) == "table" then
+            local oldCount = #output
 
-    if type(RemoteRegistry.folder) == "function" then
-        callFunction(
-            "RemoteRegistry.folder()",
-            RemoteRegistry.folder
-        )
-    end
-end
+            visited = {}
 
---====================================================
--- PUSAKA CONFIG
---====================================================
+            dumpTable(result, 1, module.Name)
 
-local PusakaConfig = requireSafe("PusakaConfig")
+            if #output > oldCount and not moduleInteresting then
+                -- output already collected
+            end
 
-if PusakaConfig then
-    callFunction(
-        "PusakaConfig.PusakaIds()",
-        PusakaConfig.PusakaIds
-    )
+        elseif type(result) == "function" then
+            if moduleInteresting then
+                log("Export: <function>")
+            end
 
-    callFunction(
-        "PusakaConfig.GetReelOrder()",
-        PusakaConfig.GetReelOrder
-    )
-
-    for _, id in ipairs({
-        "KerisBerkarat",
-        "BonekaJelangkung",
-        "LenteraArwah",
-        "CincinKuntilanak",
-        "TengkorakKemenyan",
-        "MahkotaGenderuwo"
-    }) do
-        callFunction(
-            "PusakaConfig.GetById(" .. id .. ")",
-            PusakaConfig.GetById,
-            id
-        )
+        elseif result ~= nil and moduleInteresting then
+            log("Export:", tostring(result))
+        end
     end
 end
 
---====================================================
--- PETI ARWAH CONFIG
---====================================================
+--=========================================================
+-- DECOMPILE SEARCH
+--=========================================================
 
-local Peti = requireSafe("PetiArwahConfig")
+divider("DECOMPILE / SOURCE SEARCH")
 
-if Peti then
-    callFunction(
-        "PetiArwahConfig.TradeList()",
-        Peti.TradeList
-    )
+if type(decompile) == "function" then
 
-    callFunction(
-        "PetiArwahConfig.Rates()",
-        Peti.Rates
-    )
+    for _, module in ipairs(modules) do
+        local ok, source = pcall(decompile, module)
 
-    callFunction(
-        "PetiArwahConfig.ReelOrder()",
-        Peti.ReelOrder
-    )
+        if ok and type(source) == "string" then
+            local foundAnything = false
 
-    for _, id in ipairs({
-        "KerisBerkarat",
-        "BonekaJelangkung",
-        "LenteraArwah",
-        "CincinKuntilanak",
-        "TengkorakKemenyan",
-        "MahkotaGenderuwo"
-    }) do
+            for _, word in ipairs(TARGET_WORDS) do
+                if source:lower():find(word:lower(), 1, true) then
 
-        callFunction(
-            "PetiArwahConfig.TradeValueOf(" .. id .. ")",
-            Peti.TradeValueOf,
-            id
-        )
+                    if not foundAnything then
+                        foundAnything = true
 
-        callFunction(
-            "PetiArwahConfig.WeightOf(" .. id .. ")",
-            Peti.WeightOf,
-            id
-        )
+                        log("")
+                        log("------------------------------------------------------------")
+                        log("[SOURCE MATCH]")
+                        log(safeGetFullName(module))
+                    end
+
+                    log("Keyword:", word)
+
+                    local lower = source:lower()
+                    local search = word:lower()
+
+                    local startPos = 1
+
+                    while true do
+                        local pos = lower:find(
+                            search,
+                            startPos,
+                            true
+                        )
+
+                        if not pos then
+                            break
+                        end
+
+                        local snippetStart = math.max(1, pos - 300)
+                        local snippetEnd = math.min(
+                            #source,
+                            pos + #word + 500
+                        )
+
+                        log("")
+                        log(
+                            source:sub(
+                                snippetStart,
+                                snippetEnd
+                            )
+                        )
+
+                        startPos = pos + #word
+                    end
+                end
+            end
+        end
     end
+
+else
+    log("decompile() tidak tersedia di executor.")
 end
 
---====================================================
--- SHOP CONFIG
---====================================================
+--=========================================================
+-- GETGC PASSIVE FUNCTION SEARCH
+--=========================================================
 
-local Shop = requireSafe("ShopConfig")
+divider("GETGC FUNCTION CONSTANT SEARCH")
 
-if Shop then
-    callFunction(
-        "ShopConfig.List()",
-        Shop.List
-    )
+if type(getgc) == "function"
+and debug
+and type(debug.getconstants) == "function" then
 
-    for _, id in ipairs({
-        "BibitMelati",
-        "BibitKamboja",
-        "BibitPisang",
-        "Payung",
-        "Pengelaris",
-        "PetGagak",
-        "OwlStaff"
-    }) do
-        callFunction(
-            "ShopConfig.Get(" .. id .. ")",
-            Shop.Get,
-            id
-        )
+    local gcObjects = getgc(true)
+
+    log("GC objects:", #gcObjects)
+
+    local functionCount = 0
+    local matchCount = 0
+
+    for _, value in ipairs(gcObjects) do
+        if type(value) == "function" then
+            functionCount += 1
+
+            local ok, constants = pcall(
+                debug.getconstants,
+                value
+            )
+
+            if ok and type(constants) == "table" then
+
+                local matches = {}
+
+                for index, constant in ipairs(constants) do
+                    if type(constant) == "string" then
+                        local interesting, keyword =
+                            containsTarget(constant)
+
+                        if interesting then
+                            matches[#matches + 1] = {
+                                index = index,
+                                constant = constant,
+                                keyword = keyword
+                            }
+                        end
+                    end
+                end
+
+                if #matches > 0 then
+                    matchCount += 1
+
+                    log("")
+                    log(
+                        "[FUNCTION MATCH #" ..
+                        matchCount ..
+                        "]"
+                    )
+
+                    if debug.info then
+                        local okInfo, source =
+                            pcall(debug.info, value, "s")
+
+                        if okInfo then
+                            log("Source:", tostring(source))
+                        end
+                    end
+
+                    for _, m in ipairs(matches) do
+                        log(
+                            "Constant[" ..
+                            m.index ..
+                            "] =",
+                            m.constant,
+                            "| keyword=" ..
+                            m.keyword
+                        )
+                    end
+
+                    -- Upvalues only DISPLAYED.
+                    -- Nothing is changed.
+                    if type(debug.getupvalues) == "function" then
+                        local okUp, upvalues =
+                            pcall(
+                                debug.getupvalues,
+                                value
+                            )
+
+                        if okUp
+                        and type(upvalues) == "table" then
+                            for index, up in pairs(upvalues) do
+                                local upType = typeof(up)
+
+                                if upType == "string"
+                                or upType == "number"
+                                or upType == "boolean"
+                                or upType == "Instance" then
+
+                                    log(
+                                        "  Upvalue[" ..
+                                        tostring(index) ..
+                                        "] =",
+                                        upType == "Instance"
+                                            and safeGetFullName(up)
+                                            or tostring(up)
+                                    )
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
+
+    log("")
+    log("Functions scanned:", functionCount)
+    log("Functions matched:", matchCount)
+
+else
+    log(
+        "getgc/debug.getconstants tidak tersedia."
+    )
 end
 
---====================================================
--- GAIB CONFIG
---====================================================
+--=========================================================
+-- CONNECTION SEARCH
+-- Passive metadata only
+--=========================================================
 
-local Gaib = requireSafe("GaibConfig")
+divider("REMOTE CLIENT CONNECTIONS")
 
-if Gaib then
-    callFunction(
-        "GaibConfig.List()",
-        Gaib.List
-    )
+if type(getconnections) == "function" then
 
-    for _, id in ipairs({
-        "SandalAngin",
-        "MinyakJelangkung",
-        "KemenyanPerak",
-        "AirKembang",
-        "ArangKeramat",
-        "RamuanHoki",
-        "CoinPasarSetan"
-    }) do
-        callFunction(
-            "GaibConfig.Get(" .. id .. ")",
-            Gaib.Get,
-            id
-        )
+    for _, obj in ipairs(game:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local ok, connections = pcall(
+                getconnections,
+                obj.OnClientEvent
+            )
+
+            if ok
+            and type(connections) == "table"
+            and #connections > 0 then
+
+                local interesting =
+                    containsTarget(
+                        obj.Name ..
+                        " " ..
+                        safeGetFullName(obj)
+                    )
+
+                if interesting then
+                    log("")
+                    log(
+                        "[CLIENT EVENT]",
+                        safeGetFullName(obj),
+                        "| connections=",
+                        #connections
+                    )
+
+                    for index, connection in ipairs(connections) do
+                        if connection.Function then
+                            log(
+                                "  Handler #" ..
+                                index ..
+                                ":",
+                                tostring(
+                                    connection.Function
+                                )
+                            )
+                        end
+                    end
+                end
+            end
+        end
     end
+
+else
+    log("getconnections() tidak tersedia.")
 end
 
---====================================================
--- QUEST CONFIG
---====================================================
-
-local Quest = requireSafe("QuestConfig")
-
-if Quest then
-    callFunction(
-        "QuestConfig.TodayQuests()",
-        Quest.TodayQuests
-    )
-
-    callFunction(
-        "QuestConfig.DayKey()",
-        Quest.DayKey
-    )
-
-    callFunction(
-        "QuestConfig.SecondsToReset()",
-        Quest.SecondsToReset
-    )
-
-    for _, id in ipairs({
-        "jual10",
-        "jualmasak5",
-        "masak4",
-        "bibit3",
-        "tanam6",
-        "siram6",
-        "panen6",
-        "panenmelati6"
-    }) do
-        callFunction(
-            "QuestConfig.GetById(" .. id .. ")",
-            Quest.GetById,
-            id
-        )
-    end
-end
-
---====================================================
--- PLANT CATALOG
---====================================================
-
-local Plant = requireSafe("PlantCatalog")
-
-if Plant then
-    callFunction(
-        "PlantCatalog.list()",
-        Plant.list
-    )
-
-    for _, id in ipairs({
-        "Melati",
-        "Kamboja",
-        "Pisang"
-    }) do
-        callFunction(
-            "PlantCatalog.get(" .. id .. ")",
-            Plant.get,
-            id
-        )
-
-        callFunction(
-            "PlantCatalog.ringkasTumbuh(" .. id .. ")",
-            Plant.ringkasTumbuh,
-            id
-        )
-    end
-end
-
---====================================================
+--=========================================================
 -- SAVE
---====================================================
+--=========================================================
 
-local text = table.concat(output, "\n")
+divider("SUMMARY")
 
-if writefile then
-    local fileName = "AlicePasar_FunctionDumpV2.txt"
-    writefile(fileName, text)
+log("Modules:", #modules)
+log("Remotes:", remoteCount)
+log("Player:", LocalPlayer and LocalPlayer.Name or "unknown")
+log("PlaceId:", game.PlaceId)
+log("GameId:", game.GameId)
 
-    print("")
-    print("SAVED:", fileName)
-end
+local finalText = table.concat(output, "\n")
 
-if setclipboard then
-    pcall(function()
-        setclipboard(text)
+print(finalText)
+
+if type(writefile) == "function" then
+    local fileName = "AliceDeepDump_V3.txt"
+
+    local ok, err = pcall(function()
+        writefile(fileName, finalText)
     end)
 
-    print("Copied to clipboard.")
+    if ok then
+        print("")
+        print("Saved:", fileName)
+    else
+        warn("writefile gagal:", err)
+    end
+else
+    warn("writefile() tidak tersedia.")
 end
-
-print("")
-print("==================================================")
-print(" FUNCTION DUMP COMPLETE")
-print("==================================================")
