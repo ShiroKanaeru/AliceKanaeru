@@ -1,55 +1,47 @@
 --==============================================================
---                   ALICE TRADE DUMPER V2
+--             ALICE TRADECONTROLLER DEEP DUMP V3
 --==============================================================
--- Passive dump only.
+-- Passive only.
 --
--- Focus:
---   * Game-owned containers
---   * Hashed remotes
---   * Remote registry / mapping
---   * Trade-related constants
---   * Trade client modules
+-- Fokus:
+--   Players.LocalPlayer.PlayerScripts.TradeController
+--   Players.LocalPlayer.PlayerScripts.CarryPrompSetup
 --
--- DOES NOT:
---   * FireServer
---   * InvokeServer
---   * modify constants/upvalues
+-- Dump:
+--   * all matching closures from getgc()
+--   * function name/source
+--   * all constants
+--   * all upvalues
+--   * Instance paths/classes
+--   * RemoteEvent / RemoteFunction references
+--   * shallow table contents
+--
+-- Tidak:
+--   FireServer()
+--   InvokeServer()
+--   modify upvalues/constants
 --==============================================================
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local LocalPlayer = Players.LocalPlayer
-local PlayerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
-local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
 
-local FILE_NAME = "AliceTradeDump_V2.txt"
+local FILE_NAME = "AliceTradeController_V3.txt"
 
-local TRADE_WORDS = {
-    "TradeGetInventory",
-    "TradeUpdateOffer",
-    "TradeSetReady",
-    "TradeAccept",
-    "TradeConfirm",
-    "TradeCancel",
-    "TradeRequest",
-    "TradeInvite",
-    "TradeStart",
-    "TradeEnd",
-    "TradeState",
-    "Trade"
+local TARGET_SOURCES = {
+    "TradeController",
+    "CarryPrompSetup"
 }
 
 local output = {}
 
 local function out(...)
-    local parts = {}
+    local p = {}
 
     for i = 1, select("#", ...) do
-        parts[#parts + 1] = tostring(select(i, ...))
+        p[#p + 1] = tostring(select(i, ...))
     end
 
-    output[#output + 1] = table.concat(parts, " ")
+    output[#output + 1] = table.concat(p, " ")
 end
 
 local function divider(title)
@@ -67,35 +59,158 @@ local function fullName(obj)
     return ok and result or tostring(obj)
 end
 
-local function tradeMatch(text)
-    text = tostring(text):lower()
+local function isTargetSource(source)
+    source = tostring(source)
 
-    for _, word in ipairs(TRADE_WORDS) do
-        if text:find(word:lower(), 1, true) then
-            return true, word
+    for _, word in ipairs(TARGET_SOURCES) do
+        if source:find(word, 1, true) then
+            return true
         end
     end
 
     return false
 end
 
-local function isGameContainer(obj)
-    if obj:IsDescendantOf(ReplicatedStorage) then
-        return true
-    end
+local function dumpInstance(value, prefix)
+    prefix = prefix or ""
 
-    if PlayerScripts and obj:IsDescendantOf(PlayerScripts) then
-        return true
-    end
+    out(
+        prefix ..
+        "Instance:",
+        fullName(value),
+        "| Class=" .. value.ClassName
+    )
 
-    if PlayerGui and obj:IsDescendantOf(PlayerGui) then
-        return true
+    if value:IsA("RemoteEvent") then
+        out(prefix .. ">>> REMOTE EVENT <<<")
+    elseif value:IsA("RemoteFunction") then
+        out(prefix .. ">>> REMOTE FUNCTION <<<")
     end
-
-    return false
 end
 
-divider("ALICE TRADE DUMPER V2")
+local function dumpTable(tbl, prefix, maxItems)
+    prefix = prefix or ""
+    maxItems = maxItems or 50
+
+    local count = 0
+
+    for key, value in pairs(tbl) do
+        count += 1
+
+        if count > maxItems then
+            out(prefix .. "... table truncated ...")
+            break
+        end
+
+        local t = typeof(value)
+
+        if t == "Instance" then
+            out(
+                prefix ..
+                "[" ..
+                tostring(key) ..
+                "] =>"
+            )
+
+            dumpInstance(value, prefix .. "  ")
+
+        elseif t == "string"
+        or t == "number"
+        or t == "boolean"
+        or t == "nil" then
+
+            out(
+                prefix ..
+                "[" ..
+                tostring(key) ..
+                "] =",
+                tostring(value),
+                "[" .. t .. "]"
+            )
+
+        elseif t == "table" then
+
+            out(
+                prefix ..
+                "[" ..
+                tostring(key) ..
+                "] = <table>"
+            )
+
+            local subCount = 0
+
+            for k2, v2 in pairs(value) do
+                subCount += 1
+
+                if subCount > 15 then
+                    out(prefix .. "    ...")
+                    break
+                end
+
+                local t2 = typeof(v2)
+
+                if t2 == "Instance" then
+
+                    out(
+                        prefix ..
+                        "    [" ..
+                        tostring(k2) ..
+                        "] =>"
+                    )
+
+                    dumpInstance(
+                        v2,
+                        prefix .. "      "
+                    )
+
+                elseif t2 == "string"
+                or t2 == "number"
+                or t2 == "boolean" then
+
+                    out(
+                        prefix ..
+                        "    [" ..
+                        tostring(k2) ..
+                        "] =",
+                        tostring(v2),
+                        "[" .. t2 .. "]"
+                    )
+
+                else
+
+                    out(
+                        prefix ..
+                        "    [" ..
+                        tostring(k2) ..
+                        "] = <" ..
+                        t2 ..
+                        ">"
+                    )
+
+                end
+            end
+
+        else
+
+            out(
+                prefix ..
+                "[" ..
+                tostring(key) ..
+                "] = <" ..
+                t ..
+                ">"
+            )
+
+        end
+    end
+end
+
+
+--==============================================================
+-- HEADER
+--==============================================================
+
+divider("ALICE TRADECONTROLLER DEEP DUMP V3")
 
 out("Player:", LocalPlayer.Name)
 out("PlaceId:", game.PlaceId)
@@ -110,16 +225,13 @@ if identifyexecutor then
     end
 end
 
---==============================================================
--- CAPABILITIES
---==============================================================
-
 divider("CAPABILITIES")
 
-out("writefile:", type(writefile))
-out("decompile:", type(decompile))
 out("getgc:", type(getgc))
-out("getconnections:", type(getconnections))
+out(
+    "debug.info:",
+    debug and type(debug.info) or "nil"
+)
 out(
     "debug.getconstants:",
     debug and type(debug.getconstants) or "nil"
@@ -128,607 +240,425 @@ out(
     "debug.getupvalues:",
     debug and type(debug.getupvalues) or "nil"
 )
+out("writefile:", type(writefile))
+
 
 --==============================================================
--- ALL GAME REMOTES
+-- FIND TARGET LOCAL SCRIPTS
 --==============================================================
 
-divider("GAME REMOTES")
+divider("TARGET SCRIPTS")
 
-local gameRemotes = {}
+local playerScripts =
+    LocalPlayer:FindFirstChild("PlayerScripts")
 
-for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-    if obj:IsA("RemoteEvent")
-    or obj:IsA("RemoteFunction") then
+if playerScripts then
 
-        gameRemotes[#gameRemotes + 1] = obj
+    for _, obj in ipairs(
+        playerScripts:GetDescendants()
+    ) do
 
-        out(
-            "[REMOTE]",
-            obj.ClassName,
-            "| name=" .. obj.Name,
-            "| path=" .. fullName(obj)
-        )
-    end
-end
+        if obj:IsA("LocalScript") then
 
-out("")
-out("Total ReplicatedStorage remotes:", #gameRemotes)
+            if isTargetSource(obj.Name)
+            or isTargetSource(fullName(obj)) then
 
---==============================================================
--- GAME MODULES ONLY
---==============================================================
-
-divider("GAME MODULES")
-
-local modules = {}
-
-local roots = {
-    ReplicatedStorage,
-    PlayerScripts,
-    PlayerGui
-}
-
-for _, root in ipairs(roots) do
-    if root then
-        for _, obj in ipairs(root:GetDescendants()) do
-            if obj:IsA("ModuleScript") then
-                modules[#modules + 1] = obj
-
-                local matched, keyword =
-                    tradeMatch(
-                        obj.Name .. " " .. fullName(obj)
-                    )
-
-                if matched then
-                    out(
-                        "[NAME MATCH]",
-                        fullName(obj),
-                        "| keyword=" .. keyword
-                    )
-                end
+                out(
+                    "[SCRIPT]",
+                    fullName(obj)
+                )
             end
         end
     end
 end
 
-out("")
-out("Total game modules:", #modules)
 
 --==============================================================
--- DECOMPILE ONLY TRADE SOURCE MATCHES
+-- GETGC TARGET FUNCTIONS
 --==============================================================
 
-divider("TRADE SOURCE MATCHES")
+divider("TARGET GC FUNCTIONS")
 
-local sourceMatches = 0
-
-if type(decompile) == "function" then
-
-    for index, module in ipairs(modules) do
-
-        local ok, source =
-            pcall(decompile, module)
-
-        if ok and type(source) == "string" then
-
-            local lower = source:lower()
-            local hits = {}
-
-            for _, word in ipairs(TRADE_WORDS) do
-                if lower:find(
-                    word:lower(),
-                    1,
-                    true
-                ) then
-                    hits[#hits + 1] = word
-                end
-            end
-
-            if #hits > 0 then
-                sourceMatches += 1
-
-                out("")
-                out("--------------------------------------------------------------")
-                out(
-                    "[SOURCE MATCH " ..
-                    sourceMatches ..
-                    "]"
-                )
-
-                out("Module:", fullName(module))
-                out(
-                    "Keywords:",
-                    table.concat(hits, ", ")
-                )
-
-                for _, word in ipairs(hits) do
-
-                    local searchWord =
-                        word:lower()
-
-                    local startPos = 1
-                    local hitNumber = 0
-
-                    while true do
-
-                        local pos =
-                            lower:find(
-                                searchWord,
-                                startPos,
-                                true
-                            )
-
-                        if not pos then
-                            break
-                        end
-
-                        hitNumber += 1
-
-                        local snippetStart =
-                            math.max(1, pos - 700)
-
-                        local snippetEnd =
-                            math.min(
-                                #source,
-                                pos + #word + 1200
-                            )
-
-                        out("")
-                        out(
-                            "[KEYWORD " ..
-                            word ..
-                            " #" ..
-                            hitNumber ..
-                            "]"
-                        )
-
-                        out(
-                            source:sub(
-                                snippetStart,
-                                snippetEnd
-                            )
-                        )
-
-                        startPos =
-                            pos + #word
-                    end
-                end
-            end
-        end
-    end
-
-else
-    out("decompile() unavailable")
-end
-
-out("")
-out("Source matches:", sourceMatches)
-
---==============================================================
--- GETGC TRADE FUNCTIONS
---==============================================================
-
-divider("TRADE GETGC FUNCTIONS")
-
-local gcMatchCount = 0
-local gcFunctionCount = 0
+local targetFunctions = {}
+local scannedFunctions = 0
 
 if type(getgc) == "function"
 and debug
-and type(debug.getconstants) == "function" then
-
-    local okGC, objects =
-        pcall(getgc, true)
-
-    if okGC
-    and type(objects) == "table" then
-
-        for _, value in ipairs(objects) do
-
-            if type(value) == "function" then
-
-                gcFunctionCount += 1
-
-                local okConstants, constants =
-                    pcall(
-                        debug.getconstants,
-                        value
-                    )
-
-                if okConstants
-                and type(constants) == "table" then
-
-                    local matches = {}
-
-                    for index, constant
-                        in pairs(constants) do
-
-                        if type(constant) == "string" then
-
-                            local matched, keyword =
-                                tradeMatch(constant)
-
-                            if matched then
-                                matches[#matches + 1] = {
-                                    index = index,
-                                    value = constant,
-                                    keyword = keyword
-                                }
-                            end
-                        end
-                    end
-
-                    if #matches > 0 then
-
-                        -- Ignore our own dumper where possible.
-                        local looksLikeAlice = false
-
-                        for _, c in pairs(constants) do
-                            if c == "ALICE TRADE DUMPER V2"
-                            or c == FILE_NAME then
-                                looksLikeAlice = true
-                                break
-                            end
-                        end
-
-                        if not looksLikeAlice then
-
-                            gcMatchCount += 1
-
-                            out("")
-                            out(
-                                "--------------------------------------------------------------"
-                            )
-
-                            out(
-                                "[GC MATCH #" ..
-                                gcMatchCount ..
-                                "]"
-                            )
-
-                            if debug.info then
-
-                                local okSource, src =
-                                    pcall(
-                                        debug.info,
-                                        value,
-                                        "s"
-                                    )
-
-                                if okSource then
-                                    out("Source:", src)
-                                end
-
-                                local okName, fnName =
-                                    pcall(
-                                        debug.info,
-                                        value,
-                                        "n"
-                                    )
-
-                                if okName
-                                and fnName
-                                and fnName ~= "" then
-                                    out("Name:", fnName)
-                                end
-                            end
-
-                            for _, match
-                                in ipairs(matches) do
-
-                                out(
-                                    "Constant[" ..
-                                    tostring(match.index) ..
-                                    "] =",
-                                    match.value
-                                )
-                            end
-
-                            -- Passive upvalue inspection
-                            if type(debug.getupvalues)
-                                == "function" then
-
-                                local okUp, ups =
-                                    pcall(
-                                        debug.getupvalues,
-                                        value
-                                    )
-
-                                if okUp
-                                and type(ups) == "table" then
-
-                                    for upIndex, up
-                                        in pairs(ups) do
-
-                                        local t = typeof(up)
-
-                                        if t == "Instance" then
-
-                                            if isGameContainer(up)
-                                            or up:IsA("RemoteEvent")
-                                            or up:IsA("RemoteFunction") then
-
-                                                out(
-                                                    "  Upvalue[" ..
-                                                    tostring(upIndex) ..
-                                                    "] Instance:",
-                                                    fullName(up)
-                                                )
-                                            end
-
-                                        elseif t == "string" then
-
-                                            local match =
-                                                tradeMatch(up)
-
-                                            if match then
-                                                out(
-                                                    "  Upvalue[" ..
-                                                    tostring(upIndex) ..
-                                                    "] String:",
-                                                    up
-                                                )
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-out("")
-out("Functions scanned:", gcFunctionCount)
-out("Trade GC matches:", gcMatchCount)
-
---==============================================================
--- TABLE / REGISTRY SEARCH
---==============================================================
-
-divider("TRADE REGISTRY TABLE SEARCH")
-
-local tableCount = 0
-
-if type(getgc) == "function" then
+and type(debug.info) == "function" then
 
     local okGC, objects =
         pcall(getgc, true)
 
     if okGC and type(objects) == "table" then
 
-        for _, object in ipairs(objects) do
+        for _, value in ipairs(objects) do
 
-            if type(object) == "table" then
+            if type(value) == "function" then
 
-                local matchingKeys = {}
+                scannedFunctions += 1
 
-                for key, value in pairs(object) do
+                local okSource, source =
+                    pcall(
+                        debug.info,
+                        value,
+                        "s"
+                    )
 
-                    local matched, keyword =
-                        tradeMatch(
-                            tostring(key) ..
-                            " " ..
-                            tostring(value)
-                        )
+                if okSource
+                and isTargetSource(source) then
 
-                    if matched then
+                    targetFunctions[
+                        #targetFunctions + 1
+                    ] = {
+                        fn = value,
+                        source = source
+                    }
+                end
+            end
+        end
+    end
+end
 
-                        matchingKeys[#matchingKeys + 1] = {
-                            key = key,
-                            value = value,
-                            keyword = keyword
+out("Functions scanned:", scannedFunctions)
+out("Target functions:", #targetFunctions)
+
+
+--==============================================================
+-- DUMP EACH TARGET FUNCTION
+--==============================================================
+
+for index, entry
+    in ipairs(targetFunctions) do
+
+    local fn = entry.fn
+
+    divider(
+        "FUNCTION " ..
+        index ..
+        "/" ..
+        #targetFunctions
+    )
+
+    out("Source:", entry.source)
+
+    if debug and type(debug.info) == "function" then
+
+        local okName, name =
+            pcall(
+                debug.info,
+                fn,
+                "n"
+            )
+
+        if okName then
+            out(
+                "Name:",
+                name ~= "" and name or "<anonymous>"
+            )
+        end
+
+        local okLine, line =
+            pcall(
+                debug.info,
+                fn,
+                "l"
+            )
+
+        if okLine then
+            out("Line:", line)
+        end
+
+        local okParams, params =
+            pcall(
+                debug.info,
+                fn,
+                "a"
+            )
+
+        if okParams then
+            out(
+                "ArgInfo:",
+                tostring(params)
+            )
+        end
+    end
+
+
+    --==========================================================
+    -- CONSTANTS
+    --==========================================================
+
+    out("")
+    out("----- CONSTANTS -----")
+
+    if debug
+    and type(debug.getconstants)
+        == "function" then
+
+        local okConst, constants =
+            pcall(
+                debug.getconstants,
+                fn
+            )
+
+        if okConst
+        and type(constants) == "table" then
+
+            for cIndex, constant
+                in pairs(constants) do
+
+                out(
+                    "Constant[" ..
+                    tostring(cIndex) ..
+                    "] =",
+                    tostring(constant),
+                    "[" ..
+                    typeof(constant) ..
+                    "]"
+                )
+            end
+
+        else
+            out(
+                "getconstants failed:",
+                tostring(constants)
+            )
+        end
+
+    else
+        out("debug.getconstants unavailable")
+    end
+
+
+    --==========================================================
+    -- UPVALUES
+    --==========================================================
+
+    out("")
+    out("----- UPVALUES -----")
+
+    if debug
+    and type(debug.getupvalues)
+        == "function" then
+
+        local okUps, upvalues =
+            pcall(
+                debug.getupvalues,
+                fn
+            )
+
+        if okUps
+        and type(upvalues) == "table" then
+
+            for upIndex, up
+                in pairs(upvalues) do
+
+                local t = typeof(up)
+
+                out("")
+                out(
+                    "Upvalue[" ..
+                    tostring(upIndex) ..
+                    "] Type=" ..
+                    t
+                )
+
+                if t == "Instance" then
+
+                    dumpInstance(up, "  ")
+
+                elseif t == "table" then
+
+                    dumpTable(
+                        up,
+                        "  ",
+                        50
+                    )
+
+                elseif t == "string"
+                or t == "number"
+                or t == "boolean"
+                or t == "nil" then
+
+                    out(
+                        "  Value:",
+                        tostring(up)
+                    )
+
+                elseif t == "function" then
+
+                    out(
+                        "  Function:",
+                        tostring(up)
+                    )
+
+                    if debug
+                    and type(debug.info)
+                        == "function" then
+
+                        local okUSource,
+                            uSource =
+                            pcall(
+                                debug.info,
+                                up,
+                                "s"
+                            )
+
+                        if okUSource then
+                            out(
+                                "  Function Source:",
+                                uSource
+                            )
+                        end
+
+                        local okUName,
+                            uName =
+                            pcall(
+                                debug.info,
+                                up,
+                                "n"
+                            )
+
+                        if okUName then
+                            out(
+                                "  Function Name:",
+                                uName ~= ""
+                                    and uName
+                                    or "<anonymous>"
+                            )
+                        end
+                    end
+
+                else
+
+                    out(
+                        "  Value:",
+                        tostring(up)
+                    )
+                end
+            end
+
+        else
+
+            out(
+                "getupvalues failed:",
+                tostring(upvalues)
+            )
+        end
+
+    else
+        out("debug.getupvalues unavailable")
+    end
+end
+
+
+--==============================================================
+-- ALL REMOTE INSTANCE UPVALUES SUMMARY
+--==============================================================
+
+divider("REMOTE UPVALUE SUMMARY")
+
+local remoteRefs = {}
+local seenRemote = {}
+
+for _, entry in ipairs(targetFunctions) do
+
+    local fn = entry.fn
+
+    if debug
+    and type(debug.getupvalues)
+        == "function" then
+
+        local ok, ups =
+            pcall(
+                debug.getupvalues,
+                fn
+            )
+
+        if ok
+        and type(ups) == "table" then
+
+            for _, up in pairs(ups) do
+
+                if typeof(up) == "Instance"
+                and (
+                    up:IsA("RemoteEvent")
+                    or up:IsA("RemoteFunction")
+                ) then
+
+                    if not seenRemote[up] then
+
+                        seenRemote[up] = true
+
+                        remoteRefs[
+                            #remoteRefs + 1
+                        ] = {
+                            instance = up,
+                            source = entry.source
                         }
                     end
-                end
 
-                if #matchingKeys > 0 then
+                elseif type(up) == "table" then
 
-                    tableCount += 1
+                    for key, value in pairs(up) do
 
-                    out("")
-                    out(
-                        "--------------------------------------------------------------"
-                    )
+                        if typeof(value)
+                            == "Instance"
+                        and (
+                            value:IsA("RemoteEvent")
+                            or value:IsA("RemoteFunction")
+                        ) then
 
-                    out(
-                        "[REGISTRY/TABLE MATCH #" ..
-                        tableCount ..
-                        "]"
-                    )
+                            if not seenRemote[value] then
 
-                    for _, result
-                        in ipairs(matchingKeys) do
+                                seenRemote[value] = true
 
-                        local v = result.value
-
-                        if typeof(v) == "Instance" then
-
-                            out(
-                                tostring(result.key),
-                                "=>",
-                                fullName(v),
-                                "[" .. v.ClassName .. "]"
-                            )
-
-                        elseif type(v) == "table" then
-
-                            out(
-                                tostring(result.key),
-                                "=> <table>"
-                            )
-
-                            local shown = 0
-
-                            for k2, v2 in pairs(v) do
-
-                                shown += 1
-
-                                if shown > 30 then
-                                    out("  ... truncated ...")
-                                    break
-                                end
-
-                                if typeof(v2)
-                                    == "Instance" then
-
-                                    out(
-                                        "  ",
-                                        tostring(k2),
-                                        "=>",
-                                        fullName(v2),
-                                        "[" ..
-                                        v2.ClassName ..
-                                        "]"
-                                    )
-
-                                else
-
-                                    out(
-                                        "  ",
-                                        tostring(k2),
-                                        "=>",
-                                        tostring(v2)
-                                    )
-                                end
+                                remoteRefs[
+                                    #remoteRefs + 1
+                                ] = {
+                                    instance = value,
+                                    source = entry.source,
+                                    key = key
+                                }
                             end
-
-                        else
-
-                            out(
-                                tostring(result.key),
-                                "=>",
-                                tostring(v)
-                            )
                         end
                     end
                 end
             end
         end
+    end
+end
+
+for i, data in ipairs(remoteRefs) do
+
+    local remote = data.instance
+
+    out("")
+    out(
+        "[REMOTE REF #" ..
+        i ..
+        "]"
+    )
+
+    out("Class:", remote.ClassName)
+    out("Name:", remote.Name)
+    out("Path:", fullName(remote))
+    out("From source:", data.source)
+
+    if data.key ~= nil then
+        out(
+            "Table key:",
+            tostring(data.key)
+        )
     end
 end
 
 out("")
-out("Registry/table matches:", tableCount)
+out(
+    "Unique remote references:",
+    #remoteRefs
+)
 
---==============================================================
--- CONNECTIONS FOR HASHED REMOTES
---==============================================================
-
-divider("HASHED REMOTE CLIENT CONNECTIONS")
-
-if type(getconnections) == "function" then
-
-    for _, remote in ipairs(gameRemotes) do
-
-        if remote:IsA("RemoteEvent") then
-
-            local ok, connections =
-                pcall(
-                    getconnections,
-                    remote.OnClientEvent
-                )
-
-            if ok
-            and type(connections) == "table"
-            and #connections > 0 then
-
-                out("")
-                out(
-                    "[REMOTE EVENT]",
-                    fullName(remote)
-                )
-
-                out(
-                    "Connections:",
-                    #connections
-                )
-
-                for i, connection
-                    in ipairs(connections) do
-
-                    local fn =
-                        connection.Function
-
-                    if type(fn) == "function" then
-
-                        out(
-                            "Handler #" ..
-                            i ..
-                            ":",
-                            tostring(fn)
-                        )
-
-                        if debug
-                        and type(debug.info)
-                            == "function" then
-
-                            local okSource, src =
-                                pcall(
-                                    debug.info,
-                                    fn,
-                                    "s"
-                                )
-
-                            if okSource then
-                                out(
-                                    "  Source:",
-                                    src
-                                )
-                            end
-                        end
-
-                        if debug
-                        and type(debug.getconstants)
-                            == "function" then
-
-                            local okConstants, constants =
-                                pcall(
-                                    debug.getconstants,
-                                    fn
-                                )
-
-                            if okConstants
-                            and type(constants)
-                                == "table" then
-
-                                for index, constant
-                                    in pairs(constants) do
-
-                                    if type(constant)
-                                        == "string" then
-
-                                        local matched =
-                                            tradeMatch(
-                                                constant
-                                            )
-
-                                        if matched then
-
-                                            out(
-                                                "  TRADE CONSTANT[" ..
-                                                tostring(index) ..
-                                                "] =",
-                                                constant
-                                            )
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-else
-    out("getconnections() unavailable")
-end
 
 --==============================================================
 -- SUMMARY
@@ -736,14 +666,16 @@ end
 
 divider("SUMMARY")
 
-out("Game remotes:", #gameRemotes)
-out("Game modules:", #modules)
-out("Trade source matches:", sourceMatches)
-out("Trade GC matches:", gcMatchCount)
-out("Trade table matches:", tableCount)
+out("Functions scanned:", scannedFunctions)
+out("Target functions:", #targetFunctions)
+out("Remote refs:", #remoteRefs)
 
 local finalText =
-    table.concat(output, "\n")
+    table.concat(
+        output,
+        "\n"
+    )
+
 
 --==============================================================
 -- SAVE
@@ -753,27 +685,51 @@ if type(writefile) == "function" then
 
     local ok, err =
         pcall(function()
+
             writefile(
                 FILE_NAME,
                 finalText
             )
+
         end)
 
     if ok then
+
         print("")
-        print("==============================================")
-        print("ALICE TRADE DUMPER V2 COMPLETE")
-        print("Saved:", FILE_NAME)
-        print("Characters:", #finalText)
-        print("==============================================")
+        print(
+            "=============================================="
+        )
+        print(
+            "ALICE TRADECONTROLLER V3 COMPLETE"
+        )
+        print(
+            "Saved:",
+            FILE_NAME
+        )
+        print(
+            "Characters:",
+            #finalText
+        )
+        print(
+            "Remote refs:",
+            #remoteRefs
+        )
+        print(
+            "=============================================="
+        )
+
     else
+
         warn(
             "writefile failed:",
             err
         )
+
         print(finalText)
     end
 
 else
+
     print(finalText)
+
 end
