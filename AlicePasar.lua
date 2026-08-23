@@ -1,5 +1,5 @@
 --====================================================
--- ALICE PASAR SETAN V2
+-- ALICE PASAR SETAN V2.1
 -- Dynamic Remote Resolver via LID
 -- GUI: Obsidian
 --====================================================
@@ -30,7 +30,6 @@ local Toggles = Library.Toggles
 
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
 
@@ -39,6 +38,7 @@ local LP = Players.LocalPlayer
 --====================================================
 
 local Alive = true
+local RemoteCache = {}
 
 local function isAlive()
     return Alive
@@ -59,17 +59,15 @@ local function getHumanoid()
 end
 
 --====================================================
--- DYNAMIC REMOTE RESOLVER
+-- REMOTE RESOLVER
 --====================================================
-
-local RemoteCache = {}
 
 local function GetRemote(lid)
 
-    if RemoteCache[lid] then
-        if RemoteCache[lid].Parent then
-            return RemoteCache[lid]
-        end
+    local cached = RemoteCache[lid]
+
+    if cached and cached.Parent then
+        return cached
     end
 
     for _, obj in ipairs(RS:GetDescendants()) do
@@ -77,55 +75,56 @@ local function GetRemote(lid)
         if (
             obj:IsA("RemoteEvent")
             or obj:IsA("RemoteFunction")
-        ) then
+        ) and obj:GetAttribute("LID") == lid then
 
-            local id = obj:GetAttribute("LID")
+            RemoteCache[lid] = obj
 
-            if id == lid then
+            print(
+                "[Alice Remote]",
+                lid,
+                "=>",
+                obj:GetFullName()
+            )
 
-                RemoteCache[lid] = obj
-
-                print(
-                    "[Alice V2]",
-                    lid,
-                    "=>",
-                    obj:GetFullName()
-                )
-
-                return obj
-            end
+            return obj
         end
     end
 
-    warn("[Alice V2] Remote not found:", lid)
+    warn("[Alice] Remote tidak ditemukan:", lid)
 
     return nil
 end
-
---====================================================
--- KNOWN REMOTES
---====================================================
 
 local function RefreshRemotes()
 
     RemoteCache = {}
 
-    GetRemote("Tanam")
-    GetRemote("Siram")
-    GetRemote("Panen")
-    GetRemote("CookStove")
-    GetRemote("HotbarSimpan")
-    GetRemote("HotbarMuat")
-    GetRemote("ShopPoll")
-    GetRemote("ShopBuy")
-    GetRemote("PusakaPoll")
-    GetRemote("StoragePoll")
-    GetRemote("StorageMove")
+    local list = {
+        "Tanam",
+        "Siram",
+        "Panen",
+        "CookStove",
+        "HotbarSimpan",
+        "HotbarMuat",
+        "ShopPoll",
+        "ShopBuy",
+        "GaibShopPoll",
+        "GaibBuy",
+        "GaibUse",
+        "PusakaPoll",
+        "StoragePoll",
+        "StorageMove",
+        "QuestFetch",
+        "QuestClaim"
+    }
 
+    for _, lid in ipairs(list) do
+        GetRemote(lid)
+    end
 end
 
 --====================================================
--- MOVE
+-- MOVEMENT
 --====================================================
 
 local function MoveTo(pos)
@@ -141,7 +140,8 @@ local function MoveTo(pos)
             pos + Vector3.new(0, 2.5, 0)
         )
 
-    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyLinearVelocity =
+        Vector3.zero
 
     task.wait(0.15)
 
@@ -149,97 +149,16 @@ local function MoveTo(pos)
 end
 
 --====================================================
--- MATERIAL DATA
+-- GENERAL PROMPT
 --====================================================
-
-local MATERIALS = {
-    Melati = true,
-    Kemenyan = true,
-    Dupa = true,
-    Gagak = true,
-    JamurKuburan = true,
-    KepitingSungai = true
-}
-
-local function normalize(text)
-
-    text = tostring(text or "")
-
-    return text:
-        lower():
-        gsub("%s+", "")
-end
-
---====================================================
--- AUTO FORAGE
---====================================================
-
-local function IsMaterialPrompt(prompt)
-
-    if not prompt:IsA("ProximityPrompt") then
-        return false
-    end
-
-    if not prompt.Enabled then
-        return false
-    end
-
-    local text =
-        tostring(prompt.Name)
-        .. " "
-        .. tostring(prompt.ActionText)
-        .. " "
-        .. tostring(prompt.ObjectText)
-        .. " "
-        .. tostring(prompt.Parent and prompt.Parent.Name or "")
-
-    local test = normalize(text)
-
-    -- Harus berkaitan dengan pickup
-    local pickup =
-        test:find("ambil", 1, true)
-        or test:find("pickup", 1, true)
-        or test:find("collect", 1, true)
-
-    if not pickup then
-        return false
-    end
-
-    local filter =
-        Options.MaterialFilter
-        and Options.MaterialFilter.Value
-
-    for material in pairs(MATERIALS) do
-
-        local enabled = true
-
-        if type(filter) == "table" then
-            enabled = filter[material] == true
-        end
-
-        if enabled then
-
-            if test:find(
-                normalize(material),
-                1,
-                true
-            ) then
-
-                return true
-            end
-        end
-    end
-
-    return false
-end
 
 local function PromptPosition(prompt)
 
-    local parent = prompt.Parent
-
-    if not parent then
+    if not prompt or not prompt.Parent then
         return nil
     end
+
+    local parent = prompt.Parent
 
     if parent:IsA("BasePart") then
         return parent.Position
@@ -259,6 +178,113 @@ local function PromptPosition(prompt)
     return nil
 end
 
+local function FirePrompt(prompt)
+
+    if not prompt
+    or not prompt.Parent
+    or not prompt.Enabled then
+        return false
+    end
+
+    return pcall(function()
+
+        prompt:InputHoldBegin()
+
+        task.wait(
+            math.max(
+                prompt.HoldDuration,
+                0.05
+            )
+        )
+
+        fireproximityprompt(prompt)
+
+        prompt:InputHoldEnd()
+
+    end)
+end
+
+--====================================================
+-- STRING
+--====================================================
+
+local function normalize(text)
+
+    return tostring(text or "")
+        :lower()
+        :gsub("%s+", "")
+end
+
+--====================================================
+-- AUTO FORAGE
+--====================================================
+
+local MATERIALS = {
+    Melati = true,
+    Kemenyan = true,
+    Dupa = true,
+    Gagak = true,
+    JamurKuburan = true,
+    KepitingSungai = true
+}
+
+local function IsMaterialPrompt(prompt)
+
+    if not prompt:IsA("ProximityPrompt")
+    or not prompt.Enabled then
+        return false
+    end
+
+    local text =
+        tostring(prompt.Name)
+        .. " "
+        .. tostring(prompt.ActionText)
+        .. " "
+        .. tostring(prompt.ObjectText)
+        .. " "
+        .. tostring(
+            prompt.Parent
+            and prompt.Parent.Name
+            or ""
+        )
+
+    local lower = normalize(text)
+
+    local pickup =
+        lower:find("ambil", 1, true)
+        or lower:find("pickup", 1, true)
+        or lower:find("collect", 1, true)
+
+    if not pickup then
+        return false
+    end
+
+    local filter =
+        Options.MaterialFilter
+        and Options.MaterialFilter.Value
+
+    for material in pairs(MATERIALS) do
+
+        local enabled = true
+
+        if type(filter) == "table" then
+            enabled =
+                filter[material] == true
+        end
+
+        if enabled
+        and lower:find(
+            normalize(material),
+            1,
+            true
+        ) then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function FindMaterials()
 
     local hrp = getHRP()
@@ -267,32 +293,38 @@ local function FindMaterials()
         return {}
     end
 
-    local found = {}
+    local result = {}
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    for _, obj in ipairs(
+        workspace:GetDescendants()
+    ) do
 
         if IsMaterialPrompt(obj) then
 
-            local pos = PromptPosition(obj)
+            local pos =
+                PromptPosition(obj)
 
             if pos then
 
-                table.insert(found, {
+                result[#result + 1] = {
                     Prompt = obj,
                     Position = pos,
                     Distance =
                         (hrp.Position - pos).Magnitude
-                })
+                }
 
             end
         end
     end
 
-    table.sort(found, function(a, b)
-        return a.Distance < b.Distance
-    end)
+    table.sort(
+        result,
+        function(a, b)
+            return a.Distance < b.Distance
+        end
+    )
 
-    return found
+    return result
 end
 
 local function CollectPrompt(data)
@@ -308,28 +340,43 @@ local function CollectPrompt(data)
 
     task.wait(0.15)
 
-    local ok = pcall(function()
-
-        data.Prompt:InputHoldBegin()
-
-        task.wait(
-            math.max(
-                data.Prompt.HoldDuration,
-                0.05
-            )
-        )
-
-        fireproximityprompt(data.Prompt)
-
-        data.Prompt:InputHoldEnd()
-
-    end)
-
-    return ok
+    return FirePrompt(data.Prompt)
 end
 
 --====================================================
--- AUTO TANAM
+-- PLOT
+--====================================================
+
+local function FindMyPlot()
+
+    local folder =
+        workspace:FindFirstChild("LahanPlot")
+
+    if not folder then
+        return nil
+    end
+
+    for _, obj in ipairs(
+        folder:GetChildren()
+    ) do
+
+        local owner =
+            obj:GetAttribute("Owner")
+
+        local ownerId =
+            obj:GetAttribute("OwnerId")
+
+        if owner == LP.UserId
+        or ownerId == LP.UserId then
+            return obj
+        end
+    end
+
+    return nil
+end
+
+--====================================================
+-- SEED
 --====================================================
 
 local function FindSeed()
@@ -348,31 +395,23 @@ local function FindSeed()
 
         if container then
 
-            for _, tool in ipairs(container:GetChildren()) do
+            for _, tool in ipairs(
+                container:GetChildren()
+            ) do
 
-                if tool:IsA("Tool") then
+                if tool:IsA("Tool")
+                and tool:GetAttribute("IsSeed") then
 
-                    local isSeed =
-                        tool:GetAttribute("IsSeed")
+                    if selected == "Semua" then
+                        return tool
+                    end
 
-                    local name =
-                        normalize(tool.Name)
-
-                    if isSeed then
-
-                        if selected == "Semua" then
-                            return tool
-                        end
-
-                        if name:find(
-                            normalize(selected),
-                            1,
-                            true
-                        ) then
-
-                            return tool
-                        end
-
+                    if normalize(tool.Name):find(
+                        normalize(selected),
+                        1,
+                        true
+                    ) then
+                        return tool
                     end
                 end
             end
@@ -382,58 +421,31 @@ local function FindSeed()
     return nil
 end
 
-local function FindMyPlot()
-
-    local folder =
-        workspace:FindFirstChild("LahanPlot")
-
-    if not folder then
-        return nil
-    end
-
-    for _, obj in ipairs(folder:GetChildren()) do
-
-        local owner =
-            obj:GetAttribute("Owner")
-
-        local ownerId =
-            obj:GetAttribute("OwnerId")
-
-        if owner == LP.UserId
-        or ownerId == LP.UserId then
-
-            return obj
-        end
-    end
-
-    return nil
-end
+--====================================================
+-- AUTO TANAM
+--====================================================
 
 local function AutoPlantOnce()
 
-    local Tanam =
-        GetRemote("Tanam")
+    local Tanam = GetRemote("Tanam")
 
     if not Tanam then
         return "remote_missing"
     end
 
-    local seed =
-        FindSeed()
+    local seed = FindSeed()
 
     if not seed then
         return "no_seed"
     end
 
-    local plot =
-        FindMyPlot()
+    local plot = FindMyPlot()
 
     if not plot then
         return "no_plot"
     end
 
-    local hum =
-        getHumanoid()
+    local hum = getHumanoid()
 
     if hum then
         pcall(function()
@@ -445,77 +457,71 @@ local function AutoPlantOnce()
 
     local size = plot.Size
 
-    local offsetX =
+    local x =
         (math.random() - 0.5)
         * math.max(size.X - 4, 2)
 
-    local offsetZ =
+    local z =
         (math.random() - 0.5)
         * math.max(size.Z - 4, 2)
 
     local pos =
         plot.Position
-        + Vector3.new(
-            offsetX,
-            1,
-            offsetZ
-        )
+        + Vector3.new(x, 1, z)
 
     MoveTo(pos)
 
     task.wait(0.2)
 
-    local ok = pcall(function()
+    local ok =
+        pcall(function()
+            Tanam:FireServer(pos)
+        end)
 
-        Tanam:FireServer(pos)
-
-    end)
-
-    return ok and "planted" or "failed"
+    return ok
+        and "planted"
+        or "failed"
 end
 
 --====================================================
--- PLANT SCANNER
+-- PLANTS
 --====================================================
 
 local function FindPlants()
 
-    local list = {}
+    local result = {}
 
     local folder =
         workspace:FindFirstChild("LahanPlot")
 
     if not folder then
-        return list
+        return result
     end
 
-    for _, obj in ipairs(folder:GetDescendants()) do
+    for _, obj in ipairs(
+        folder:GetDescendants()
+    ) do
 
-        if obj:IsA("BasePart") then
-
-            local plantKey =
-                obj:GetAttribute("PlantKey")
+        if obj:IsA("BasePart")
+        and obj:GetAttribute("PlantKey") then
 
             local owner =
                 obj:GetAttribute("OwnerId")
 
-            if plantKey
-            and (
-                owner == nil
-                or owner == LP.UserId
-            ) then
+            if owner == nil
+            or owner == LP.UserId then
 
-                table.insert(list, obj)
-
+                result[#result + 1] =
+                    obj
             end
         end
     end
 
-    return list
+    return result
 end
 
 --====================================================
--- AUTO SIRAM
+-- WATER TOOL
 --====================================================
 
 local function FindWaterTool()
@@ -529,38 +535,42 @@ local function FindWaterTool()
 
         if container then
 
-            for _, obj in ipairs(container:GetChildren()) do
+            for _, obj in ipairs(
+                container:GetChildren()
+            ) do
 
                 if obj:IsA("Tool")
-                and obj.Name == "PenyiramTanaman" then
+                and obj.Name
+                == "PenyiramTanaman" then
 
                     return obj
-
                 end
             end
         end
     end
 
+    return nil
 end
+
+--====================================================
+-- AUTO SIRAM
+--====================================================
 
 local function WaterPlants()
 
-    local Siram =
-        GetRemote("Siram")
+    local Siram = GetRemote("Siram")
 
     if not Siram then
         return
     end
 
-    local tool =
-        FindWaterTool()
+    local tool = FindWaterTool()
 
     if not tool then
         return
     end
 
-    local hum =
-        getHumanoid()
+    local hum = getHumanoid()
 
     if hum then
         pcall(function()
@@ -568,7 +578,9 @@ local function WaterPlants()
         end)
     end
 
-    for _, plant in ipairs(FindPlants()) do
+    for _, plant in ipairs(
+        FindPlants()
+    ) do
 
         if not Toggles.AutoSiram.Value then
             break
@@ -597,8 +609,6 @@ local function WaterPlants()
 
             task.wait(0.15)
 
-            -- berdasarkan behavior script lama:
-            -- beberapa FireServer untuk isi air
             for i = 1, 5 do
 
                 if not Toggles.AutoSiram.Value then
@@ -612,7 +622,6 @@ local function WaterPlants()
                 task.wait(
                     Options.SiramDelay.Value
                 )
-
             end
         end
     end
@@ -624,14 +633,15 @@ end
 
 local function HarvestPlants()
 
-    local Panen =
-        GetRemote("Panen")
+    local Panen = GetRemote("Panen")
 
     if not Panen then
         return
     end
 
-    for _, plant in ipairs(FindPlants()) do
+    for _, plant in ipairs(
+        FindPlants()
+    ) do
 
         if not Toggles.AutoHarvest.Value then
             break
@@ -651,9 +661,7 @@ local function HarvestPlants()
             task.wait(0.15)
 
             pcall(function()
-
                 Panen:FireServer(plant)
-
             end)
 
             task.wait(
@@ -673,10 +681,10 @@ local function Cook(menu)
         GetRemote("CookStove")
 
     if not CookStove then
-        return
+        return "remote_missing"
     end
 
-    local ok, result =
+    local ok, response =
         pcall(function()
 
             return CookStove:
@@ -684,15 +692,355 @@ local function Cook(menu)
 
         end)
 
-    if ok then
+    if not ok then
+        return "error"
+    end
 
-        print(
-            "[Alice Cook]",
-            menu,
-            result
+    return response
+end
+
+--====================================================
+-- AUTO SERVE
+--====================================================
+
+local function FindMyKios()
+
+    local folder =
+        workspace:FindFirstChild("KiosAktif")
+
+    if not folder then
+        return nil
+    end
+
+    local named =
+        folder:FindFirstChild(
+            "Kios_" .. LP.Name
         )
 
+    if named then
+        return named
     end
+
+    for _, kios in ipairs(
+        folder:GetChildren()
+    ) do
+
+        local owner =
+            kios:GetAttribute("Owner")
+
+        local ownerId =
+            kios:GetAttribute("OwnerId")
+
+        if owner == LP.UserId
+        or ownerId == LP.UserId then
+            return kios
+        end
+    end
+
+    return nil
+end
+
+local function FindTakePrompt(
+    kios,
+    keyword
+)
+
+    keyword =
+        string.lower(keyword)
+
+    for _, obj in ipairs(
+        kios:GetDescendants()
+    ) do
+
+        if obj:IsA("ProximityPrompt")
+        and obj.Enabled then
+
+            local text =
+                string.lower(
+                    tostring(obj.ActionText)
+                    .. " "
+                    .. tostring(obj.ObjectText)
+                )
+
+            if text:find(
+                "ambil",
+                1,
+                true
+            )
+            and text:find(
+                keyword,
+                1,
+                true
+            ) then
+
+                return obj
+            end
+        end
+    end
+
+    return nil
+end
+
+local function FindReadyGhost(kios)
+
+    local folder =
+        workspace:FindFirstChild("Arwah")
+
+    if not folder then
+        return nil
+    end
+
+    local kiosPos =
+        kios:GetPivot().Position
+
+    local closest = nil
+    local closestDist = math.huge
+
+    for _, ghost in ipairs(
+        folder:GetChildren()
+    ) do
+
+        if ghost:IsA("Model") then
+
+            local ghostPos =
+                ghost:GetPivot().Position
+
+            local dist =
+                (ghostPos - kiosPos).Magnitude
+
+            if dist <= Options.ServeRadius.Value
+            and dist < closestDist then
+
+                for _, prompt in ipairs(
+                    ghost:GetDescendants()
+                ) do
+
+                    if prompt:IsA(
+                        "ProximityPrompt"
+                    )
+                    and prompt.Enabled
+                    and tostring(
+                        prompt.ActionText
+                    ):find(
+                        "Beri ",
+                        1,
+                        true
+                    ) then
+
+                        closest = {
+                            Ghost = ghost,
+                            Prompt = prompt,
+                            Position = ghostPos
+                        }
+
+                        closestDist = dist
+
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+local function GetRequestedItem(
+    actionText
+)
+
+    local text =
+        tostring(actionText or "")
+
+    text =
+        text:gsub(
+            "^Beri%s+",
+            ""
+        )
+
+    if text:find(
+        "Jamur Rebus",
+        1,
+        true
+    ) then
+        return "Jamur Rebus"
+
+    elseif text:find(
+        "Sate Gagak",
+        1,
+        true
+    ) then
+        return "Sate Gagak"
+
+    elseif text:find(
+        "Bunga Melati",
+        1,
+        true
+    ) then
+        return "Melati"
+
+    elseif text:find(
+        "Sate Kepiting",
+        1,
+        true
+    ) then
+        return "Sate Kepiting"
+
+    elseif text:find(
+        "Tumis Kamboja",
+        1,
+        true
+    ) then
+        return "Tumis Kamboja"
+
+    elseif text:find(
+        "Pisang Raja Rebus",
+        1,
+        true
+    ) then
+        return "Pisang Raja Rebus"
+
+    elseif text:find(
+        "Dupa",
+        1,
+        true
+    ) then
+        return "Dupa"
+
+    elseif text:find(
+        "Kamboja",
+        1,
+        true
+    ) then
+        return "Kamboja"
+
+    elseif text:find(
+        "Melati",
+        1,
+        true
+    ) then
+        return "Melati"
+    end
+
+    return text
+end
+
+local function ServeOnce()
+
+    local kios = FindMyKios()
+
+    if not kios then
+        return "no_kios"
+    end
+
+    local ghost =
+        FindReadyGhost(kios)
+
+    if not ghost then
+        return "no_ghost"
+    end
+
+    local requested =
+        GetRequestedItem(
+            ghost.Prompt.ActionText
+        )
+
+    if requested == "" then
+        return "unknown_item"
+    end
+
+    local takePrompt =
+        FindTakePrompt(
+            kios,
+            requested:lower()
+        )
+
+    if not takePrompt then
+        return "item_not_found: "
+            .. requested
+    end
+
+    -- kosongkan tangan
+    local char = getChar()
+
+    if char then
+        for _, tool in ipairs(
+            char:GetChildren()
+        ) do
+
+            if tool:IsA("Tool") then
+                tool.Parent = LP.Backpack
+            end
+        end
+    end
+
+    task.wait(0.2)
+
+    local takePos =
+        PromptPosition(takePrompt)
+
+    if takePos then
+        MoveTo(takePos)
+    end
+
+    task.wait(0.2)
+
+    FirePrompt(takePrompt)
+
+    task.wait(0.7)
+
+    if not ghost.Prompt.Parent
+    or not ghost.Prompt.Enabled then
+        return "ghost_changed"
+    end
+
+    MoveTo(
+        ghost.Position
+        + Vector3.new(0, 0, 3)
+    )
+
+    task.wait(0.25)
+
+    local coinsBefore = 0
+
+    local leaderstats =
+        LP:FindFirstChild("leaderstats")
+
+    local coin =
+        leaderstats
+        and (
+            leaderstats:FindFirstChild("Koin")
+            or leaderstats:FindFirstChild("Coins")
+        )
+
+    if coin then
+        coinsBefore = coin.Value
+    end
+
+    local ok =
+        FirePrompt(
+            ghost.Prompt
+        )
+
+    task.wait(1)
+
+    local coinsAfter =
+        coin and coin.Value
+        or coinsBefore
+
+    if ok
+    and coinsAfter > coinsBefore then
+
+        return
+            "served +"
+            .. tostring(
+                coinsAfter - coinsBefore
+            )
+    end
+
+    return ok
+        and "served"
+        or "failed"
 end
 
 --====================================================
@@ -701,8 +1049,8 @@ end
 
 local Window =
     Library:CreateWindow({
-        Title = "Alice Pasar Setan V2",
-        Footer = "Dynamic LID Remote Resolver",
+        Title = "Alice Pasar Setan V2.1",
+        Footer = "AliceHub • Dynamic LID Resolver",
         NotifySide = "Right",
         ShowCustomCursor = true
     })
@@ -714,7 +1062,7 @@ local Main =
     )
 
 --====================================================
--- FORAGE UI
+-- FORAGE GUI
 --====================================================
 
 local ForageBox =
@@ -752,7 +1100,6 @@ ForageBox:AddDropdown(
         },
 
         Multi = true,
-
         Text = "Material"
     }
 )
@@ -769,7 +1116,7 @@ ForageBox:AddSlider(
 )
 
 --====================================================
--- KEBUN UI
+-- KEBUN GUI
 --====================================================
 
 local KebunBox =
@@ -851,7 +1198,7 @@ KebunBox:AddSlider(
 )
 
 --====================================================
--- COOK UI
+-- COOK GUI
 --====================================================
 
 local CookBox =
@@ -896,12 +1243,51 @@ CookBox:AddSlider(
 )
 
 --====================================================
--- DEBUG
+-- SERVE GUI
+--====================================================
+
+local ServeBox =
+    Main:AddRightGroupbox(
+        "Auto Serve"
+    )
+
+ServeBox:AddToggle(
+    "AutoServe",
+    {
+        Text = "Auto Serve Arwah",
+        Default = false
+    }
+)
+
+ServeBox:AddSlider(
+    "ServeDelay",
+    {
+        Text = "Serve Delay",
+        Default = 3,
+        Min = 1,
+        Max = 15,
+        Rounding = 0
+    }
+)
+
+ServeBox:AddSlider(
+    "ServeRadius",
+    {
+        Text = "Ghost Radius",
+        Default = 35,
+        Min = 10,
+        Max = 100,
+        Rounding = 0
+    }
+)
+
+--====================================================
+-- DEBUG GUI
 --====================================================
 
 local DebugBox =
-    Main:AddRightGroupbox(
-        "Debug"
+    Main:AddLeftGroupbox(
+        "Debug / Remote"
     )
 
 DebugBox:AddButton(
@@ -915,7 +1301,6 @@ DebugBox:AddButton(
             Description = "Remote cache refreshed",
             Time = 3
         })
-
     end
 )
 
@@ -923,39 +1308,49 @@ DebugBox:AddButton(
     "Print Remote Mapping",
     function()
 
-        print("========= ALICE REMOTES =========")
+        print(
+            "========== ALICE REMOTES =========="
+        )
 
         for _, name in ipairs({
             "Tanam",
             "Siram",
             "Panen",
             "CookStove",
+            "HotbarSimpan",
+            "HotbarMuat",
             "ShopPoll",
             "ShopBuy",
+            "GaibShopPoll",
+            "GaibBuy",
+            "GaibUse",
+            "PusakaPoll",
             "StoragePoll",
             "StorageMove",
-            "PusakaPoll"
+            "QuestFetch",
+            "QuestClaim"
         }) do
 
-            local r =
+            local remote =
                 GetRemote(name)
 
             print(
                 name,
                 "=",
-                r and r:GetFullName()
+                remote
+                and remote:GetFullName()
                 or "NOT FOUND"
             )
-
         end
 
-        print("===============================")
-
+        print(
+            "=================================="
+        )
     end
 )
 
 --====================================================
--- SETTINGS
+-- UI SETTINGS
 --====================================================
 
 local Settings =
@@ -1000,11 +1395,11 @@ SaveManager:SetIgnoreIndexes({
 })
 
 ThemeManager:SetFolder(
-    "AlicePasarV2"
+    "AlicePasar"
 )
 
 SaveManager:SetFolder(
-    "AlicePasarV2/config"
+    "AlicePasar/config"
 )
 
 SaveManager:
@@ -1017,7 +1412,7 @@ SaveManager:
     LoadAutoloadConfig()
 
 --====================================================
--- AUTO FORAGE LOOP
+-- FORAGE LOOP
 --====================================================
 
 task.spawn(function()
@@ -1026,12 +1421,13 @@ task.spawn(function()
 
         if Toggles.AutoForage.Value then
 
-            local materials =
+            local list =
                 FindMaterials()
 
-            for _, data in ipairs(materials) do
+            for _, data in ipairs(list) do
 
-                if not Toggles.AutoForage.Value then
+                if not Toggles.AutoForage.Value
+                or not isAlive() then
                     break
                 end
 
@@ -1041,15 +1437,16 @@ task.spawn(function()
                     Options.CollectDelay.Value
                 )
             end
-        end
 
-        task.wait(0.5)
+        else
+            task.wait(0.5)
+        end
     end
 
 end)
 
 --====================================================
--- AUTO TANAM LOOP
+-- PLANT LOOP
 --====================================================
 
 task.spawn(function()
@@ -1071,16 +1468,14 @@ task.spawn(function()
             )
 
         else
-
             task.wait(1)
-
         end
     end
 
 end)
 
 --====================================================
--- AUTO SIRAM LOOP
+-- WATER LOOP
 --====================================================
 
 task.spawn(function()
@@ -1088,19 +1483,16 @@ task.spawn(function()
     while isAlive() do
 
         if Toggles.AutoSiram.Value then
-
             WaterPlants()
-
         end
 
         task.wait(1)
-
     end
 
 end)
 
 --====================================================
--- AUTO HARVEST LOOP
+-- HARVEST LOOP
 --====================================================
 
 task.spawn(function()
@@ -1108,19 +1500,16 @@ task.spawn(function()
     while isAlive() do
 
         if Toggles.AutoHarvest.Value then
-
             HarvestPlants()
-
         end
 
         task.wait(1)
-
     end
 
 end)
 
 --====================================================
--- AUTO COOK LOOP
+-- COOK LOOP
 --====================================================
 
 task.spawn(function()
@@ -1129,8 +1518,15 @@ task.spawn(function()
 
         if Toggles.AutoCook.Value then
 
-            Cook(
-                Options.CookMenu.Value
+            local result =
+                Cook(
+                    Options.CookMenu.Value
+                )
+
+            print(
+                "[Alice Cook]",
+                Options.CookMenu.Value,
+                result
             )
 
             task.wait(
@@ -1138,16 +1534,43 @@ task.spawn(function()
             )
 
         else
-
             task.wait(1)
-
         end
     end
 
 end)
 
 --====================================================
--- UNLOAD
+-- SERVE LOOP
+--====================================================
+
+task.spawn(function()
+
+    while isAlive() do
+
+        if Toggles.AutoServe.Value then
+
+            local result =
+                ServeOnce()
+
+            print(
+                "[Alice Serve]",
+                result
+            )
+
+            task.wait(
+                Options.ServeDelay.Value
+            )
+
+        else
+            task.wait(1)
+        end
+    end
+
+end)
+
+--====================================================
+-- CLEANUP
 --====================================================
 
 Library:OnUnload(function()
@@ -1159,18 +1582,24 @@ Library:OnUnload(function()
 end)
 
 --====================================================
--- STARTUP
+-- START
 --====================================================
 
 RefreshRemotes()
 
 Library:Notify({
-    Title = "Alice Pasar Setan V2",
-    Description = "LID resolver loaded!",
+    Title = "Alice Pasar Setan V2.1",
+    Description = "All systems loaded!",
     Time = 5
 })
 
 print("======================================")
-print(" Alice Pasar Setan V2 Loaded")
+print(" ALICE PASAR SETAN V2.1")
+print(" Auto Forage")
+print(" Auto Tanam")
+print(" Auto Siram")
+print(" Auto Panen")
+print(" Auto Cook")
+print(" Auto Serve")
 print(" Dynamic LID Remote Resolver")
 print("======================================")
