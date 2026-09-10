@@ -1,31 +1,4 @@
--- AliceHUB SAE Register-Safe Exact Compile Probe
--- Compile only; patched payload is NOT executed.
-local CoreGui = game:GetService("CoreGui")
-local g = Instance.new("ScreenGui")
-g.Name = "AliceHUB_SAECompileProbe"
-g.ResetOnSpawn = false
-local parent = CoreGui
-if type(gethui) == "function" then
-    local ok,h = pcall(gethui)
-    if ok and h then parent = h end
-end
-g.Parent = parent
-local t = Instance.new("TextLabel")
-t.Size = UDim2.fromOffset(640,280)
-t.Position = UDim2.new(.5,-320,.5,-140)
-t.BackgroundColor3 = Color3.fromRGB(18,18,18)
-t.TextColor3 = Color3.new(1,1,1)
-t.TextXAlignment = Enum.TextXAlignment.Left
-t.TextYAlignment = Enum.TextYAlignment.Top
-t.TextWrapped = true
-t.Font = Enum.Font.Code
-t.TextSize = 15
-t.Parent = g
-local L={}
-local function s(x) L[#L+1]=x t.Text=table.concat(L,"\n") print("[SAE Compile]",x) task.wait(.5) end
-s("UI READY")
-s("FarmCore locals: 203 -> 153")
-local PAYLOAD = [=[-- AliceHUB · Steal An Egg · Arceus/Lite Register-Safe TEST
+-- AliceHUB · Steal An Egg · Arceus/Lite Register-Safe TEST
 -- FarmCore register fix only. Logic/features intentionally unchanged.
 -- Do NOT upload to production until runtime-tested.
 
@@ -13646,18 +13619,3 @@ task.defer(function()
 
     notify("AliceHUB · Latest Dump", "Compact latest-dump modules loaded", 4)
 end)
-]=]
-s("Payload bytes = "..#PAYLOAD)
-s("BEFORE loadstring")
-local st=os.clock()
-local ok,fn,err=pcall(function() local f,e=loadstring(PAYLOAD) return f,e end)
-local dt=os.clock()-st
-if not ok then
-    s("THREW "..string.format("%.3fs",dt).." -> "..tostring(fn))
-elseif type(fn)~="function" then
-    s("COMPILE FAIL "..string.format("%.3fs",dt).." -> "..tostring(err))
-else
-    s("COMPILE PASS "..string.format("%.3fs",dt))
-    s("Payload NOT executed")
-end
-s("DONE")
