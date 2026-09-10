@@ -1,43 +1,35 @@
--- AliceHUB Arceus Lite Exact Payload Compile Probe V5
--- COMPILE ONLY: payload is NEVER executed.
+-- AliceHUB SAE Register-Safe Exact Compile Probe
+-- Compile only; patched payload is NOT executed.
 local CoreGui = game:GetService("CoreGui")
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "AliceHUB_ExactCompileProbeV5"
-gui.ResetOnSpawn = false
-
+local g = Instance.new("ScreenGui")
+g.Name = "AliceHUB_SAECompileProbe"
+g.ResetOnSpawn = false
 local parent = CoreGui
 if type(gethui) == "function" then
-    local ok, hui = pcall(gethui)
-    if ok and hui then parent = hui end
+    local ok,h = pcall(gethui)
+    if ok and h then parent = h end
 end
-gui.Parent = parent
+g.Parent = parent
+local t = Instance.new("TextLabel")
+t.Size = UDim2.fromOffset(640,280)
+t.Position = UDim2.new(.5,-320,.5,-140)
+t.BackgroundColor3 = Color3.fromRGB(18,18,18)
+t.TextColor3 = Color3.new(1,1,1)
+t.TextXAlignment = Enum.TextXAlignment.Left
+t.TextYAlignment = Enum.TextYAlignment.Top
+t.TextWrapped = true
+t.Font = Enum.Font.Code
+t.TextSize = 15
+t.Parent = g
+local L={}
+local function s(x) L[#L+1]=x t.Text=table.concat(L,"\n") print("[SAE Compile]",x) task.wait(.5) end
+s("UI READY")
+s("FarmCore locals: 203 -> 153")
+local PAYLOAD = [=[-- AliceHUB · Steal An Egg · Arceus/Lite Register-Safe TEST
+-- FarmCore register fix only. Logic/features intentionally unchanged.
+-- Do NOT upload to production until runtime-tested.
 
-local label = Instance.new("TextLabel")
-label.Size = UDim2.fromOffset(620, 310)
-label.Position = UDim2.new(0.5, -310, 0.5, -155)
-label.BackgroundColor3 = Color3.fromRGB(18,18,18)
-label.BorderSizePixel = 0
-label.TextColor3 = Color3.new(1,1,1)
-label.TextXAlignment = Enum.TextXAlignment.Left
-label.TextYAlignment = Enum.TextYAlignment.Top
-label.TextWrapped = true
-label.Font = Enum.Font.Code
-label.TextSize = 15
-label.Parent = gui
-
-local lines = {}
-local function stage(s)
-    lines[#lines+1] = s
-    label.Text = "AliceHUB · Exact Payload Compile V5\n\n" .. table.concat(lines, "\n")
-    print("[AliceHUB ExactCompile]", s)
-    task.wait(0.8)
-end
-
-stage("UI READY")
-
-stage("Target = stealanegg.lua")
-local PAYLOAD = [=[--[[
+--[[
     AliceHUB · Steal An Egg
     AliceHUB SAE · Anime Dice V7 exact native UI · 2026-09-07 client-dump additions
 
@@ -2116,58 +2108,59 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
         local AB = game:GetService(("Players"))
         local BB = game:GetService(("RunService"))
         local CB = AB.LocalPlayer
-        local DB = 20
-        local EB = 0.10
-        local FB = 8
-        local GB = 45
-        local HB = 3
-        local IB = 12
-        local JB = 3
-        local KB = CFrame.new(545.498169, 70.5743179, - 373.694336, - 0.387677997, 4.65573002e-08, - 0.921794832, 2.49264431e-08, 1, 4.0023945e-08, 0.921794832, - 7.46066409e-09, - 0.387677997)
-        local LB = CFrame.new(527.195068, 70.5743103, - 366.193207, 0.991655886, 3.10400239e-08, 0.128913239, - 2.53748063e-08, 1, - 4.55884077e-08, - 0.128913239, 4.19368646e-08, 0.991655886)
-        local MB = CFrame.new(543.658569, 70.5743103, - 420.763092, 0.23178184, - 1.76178219e-08, - 0.97276777, - 9.24899837e-08, 1, - 4.0148656e-08, 0.97276777, 9.92770026e-08, 0.23178184)
-        local NB = CFrame.new(535.798279, 70.5743103, - 410.650757, - 0.986485302, - 8.97836472e-08, 0.163849756, - 8.35836218e-08, 1, 4.47338842e-08, - 0.163849756, 3.04341654e-08, - 0.986485302)
-        local OB = {4, 12, 30, 60, 120}
-        local PB = {}
-        local QB = 45
-        local RB = 3
-        local SB = {}
-        local TB = 2.5
-        local UB = 4.0
-        local VB = 2.0
-        local WB = 0.05
-        local XB = 1.0
-        local YB = 1.5
-        local ZB = 8
-        local aC = 1.0
-        local bC = 4
-        local cC = 60
-        local dC = 3.0
-        local eC = 1.2
-        local fC = 120
-        local gC = 0.001
-        local hC = {Slot = true, Dropped = true}
-        local iC = {Carried = true}
-        local jC = {GuardCarried = true}
-        local kC = {Claimed = true}
-        local lC = 12.0
-        local mC = 1.0
-        local nC = 2.0
-        local oC = 3.0
-        local pC = 0.30
-        local qC = 0.30
-        local rC = 1.5
-        local sC = 15
-        local tC = 33
-        local uC = 1000
-        local vC = 300
-        local wC = 18
-        local xC = 0.05
-        local yC = 200
-        local zC = 4
-        local AC = 0.15
-        local BC = {UP = 6, DOWN = 24, MAX_DY = 8}
-        _G [("SAE_TweenMove")] = _G [("SAE_TweenMove")] or false _G [("SAE_TweenSpeed")] = tonumber(_G [("SAE_TweenSpeed")]) or vC
+        local Core = {}
+        Core.DB = 20
+        Core.EB = 0.10
+        Core.FB = 8
+        Core.GB = 45
+        Core.HB = 3
+        Core.IB = 12
+        Core.JB = 3
+        Core.KB = CFrame.new(545.498169, 70.5743179, - 373.694336, - 0.387677997, 4.65573002e-08, - 0.921794832, 2.49264431e-08, 1, 4.0023945e-08, 0.921794832, - 7.46066409e-09, - 0.387677997)
+        Core.LB = CFrame.new(527.195068, 70.5743103, - 366.193207, 0.991655886, 3.10400239e-08, 0.128913239, - 2.53748063e-08, 1, - 4.55884077e-08, - 0.128913239, 4.19368646e-08, 0.991655886)
+        Core.MB = CFrame.new(543.658569, 70.5743103, - 420.763092, 0.23178184, - 1.76178219e-08, - 0.97276777, - 9.24899837e-08, 1, - 4.0148656e-08, 0.97276777, 9.92770026e-08, 0.23178184)
+        Core.NB = CFrame.new(535.798279, 70.5743103, - 410.650757, - 0.986485302, - 8.97836472e-08, 0.163849756, - 8.35836218e-08, 1, 4.47338842e-08, - 0.163849756, 3.04341654e-08, - 0.986485302)
+        Core.OB = {4, 12, 30, 60, 120}
+        Core.PB = {}
+        Core.QB = 45
+        Core.RB = 3
+        Core.SB = {}
+        Core.TB = 2.5
+        Core.UB = 4.0
+        Core.VB = 2.0
+        Core.WB = 0.05
+        Core.XB = 1.0
+        Core.YB = 1.5
+        Core.ZB = 8
+        Core.aC = 1.0
+        Core.bC = 4
+        Core.cC = 60
+        Core.dC = 3.0
+        Core.eC = 1.2
+        Core.fC = 120
+        Core.gC = 0.001
+        Core.hC = {Slot = true, Dropped = true}
+        Core.iC = {Carried = true}
+        Core.jC = {GuardCarried = true}
+        Core.kC = {Claimed = true}
+        Core.lC = 12.0
+        Core.mC = 1.0
+        Core.nC = 2.0
+        Core.oC = 3.0
+        Core.pC = 0.30
+        Core.qC = 0.30
+        Core.rC = 1.5
+        Core.sC = 15
+        Core.tC = 33
+        Core.uC = 1000
+        Core.vC = 300
+        Core.wC = 18
+        Core.xC = 0.05
+        Core.yC = 200
+        Core.zC = 4
+        Core.AC = 0.15
+        Core.BC = {UP = 6, DOWN = 24, MAX_DY = 8}
+        _G [("SAE_TweenMove")] = _G [("SAE_TweenMove")] or false _G [("SAE_TweenSpeed")] = tonumber(_G [("SAE_TweenSpeed")]) or Core.vC
         _G [("SAE_InstantTP")] = _G [("SAE_InstantTP")] or false
         -- ============================================================
         -- SAE core movement / field-egg engine
@@ -2925,7 +2918,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     local sH = qH.Position
                     local tH = Vector3.new(bH.X - sH.X, 0, bH.Z - sH.Z)
                     local uH = tH.Magnitude
-                    if uH < JB then
+                    if uH < Core.JB then
                         rH:MoveTo(sH)
                         return true
                     end
@@ -2975,7 +2968,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         AH = true
                     end
                     pH = JH
-                    if (not AH) and JH and rH.MoveDirection.Magnitude < 0.05 and (os.clock() - iH) > pC then
+                    if (not AH) and JH and rH.MoveDirection.Magnitude < 0.05 and (os.clock() - iH) > Core.pC then
                         AH = true
                     end
                     if AH or (os.clock() - iH) >= XG then
@@ -2986,7 +2979,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 end
             end
             local KH = getHumanoidRootPart()
-            if KH and (Vector2.new(KH.Position.X, KH.Position.Z) - Vector2.new(bH.X, bH.Z)).Magnitude < JB then
+            if KH and (Vector2.new(KH.Position.X, KH.Position.Z) - Vector2.new(bH.X, bH.Z)).Magnitude < Core.JB then
                 return true
             end
             return false
@@ -3013,12 +3006,12 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             if not UH then
                 return SH
             end
-            local VH = workspace:Raycast(Vector3.new(RH.X, SH + BC.UP, RH.Z), Vector3.new(0, - BC.DOWN, 0), UH)
+            local VH = workspace:Raycast(Vector3.new(RH.X, SH + Core.BC.UP, RH.Z), Vector3.new(0, - Core.BC.DOWN, 0), UH)
             if not VH then
                 return SH
             end
             local WH = VH.Position.Y + (PH.Size.Y * 0.5) + QH.HipHeight
-            if math.abs(WH - SH) > (TH or BC.MAX_DY) then
+            if math.abs(WH - SH) > (TH or Core.BC.MAX_DY) then
                 return SH
             end
             return WH
@@ -3106,12 +3099,12 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             if not FI then
                 return false
             end
-            local GI = tonumber(_G [("SAE_TweenSpeed")]) or vC
-            if GI < sC then
-                GI = sC
+            local GI = tonumber(_G [("SAE_TweenSpeed")]) or Core.vC
+            if GI < Core.sC then
+                GI = Core.sC
             end
-            if GI > uC then
-                GI = uC
+            if GI > Core.uC then
+                GI = Core.uC
             end
             local HI = os.clock()
             local II = FI.Position.Y
@@ -3127,7 +3120,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             local NI = 0
             local OI = false
             local PI = 0
-            while (BI == nil or BI()) and (os.clock() - HI) < yC do
+            while (BI == nil or BI()) and (os.clock() - HI) < Core.yC do
                 if DI and not DI() then
                     return false
                 end
@@ -3140,12 +3133,12 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     return false
                 else
                     local TI = RI.Position
-                    if II == nil or math.abs(TI.Y - (II + PI)) > BC.MAX_DY then
+                    if II == nil or math.abs(TI.Y - (II + PI)) > Core.BC.MAX_DY then
                         II = TI.Y - PI
                     end
                     local UI = Vector3.new(AI.X - TI.X, 0, AI.Z - TI.Z)
                     local VI = UI.Magnitude
-                    if VI < JB then
+                    if VI < Core.JB then
                         RI.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                         SI:MoveTo(TI)
                         return true
@@ -3155,12 +3148,12 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         SI:MoveTo(TI)
                         return true
                     end
-                    local WI = sC * (os.clock() - JI)
+                    local WI = Core.sC * (os.clock() - JI)
                     if LI == nil then
                         LI, JI = VI, os.clock()
-                    elseif (LI - VI) >= WI * AC then
+                    elseif (LI - VI) >= WI * Core.AC then
                         LI, JI = VI, os.clock()
-                    elseif (os.clock() - JI) > zC then
+                    elseif (os.clock() - JI) > Core.zC then
                         return false
                     end
                     local XI = (not EI) and getCachedTreadmillPosition() or nil
@@ -3196,11 +3189,11 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     if kJ > 0.05 then
                         jJ = jJ.Unit
                         local lJ = findGroundingController()
-                        local mJ = lJ and GI or math.min(GI, tC)
-                        local nJ = math.max(wC, mJ * xC)
+                        local mJ = lJ and GI or math.min(GI, Core.tC)
+                        local nJ = math.max(Core.wC, mJ * Core.xC)
                         local oJ = math.min(mJ * QI, kJ, nJ)
                         local pJ = TI + jJ * oJ
-                        II = resolveGroundY(RI, SI, pJ, II, math.max(BC.MAX_DY, oJ * 0.5))
+                        II = resolveGroundY(RI, SI, pJ, II, math.max(Core.BC.MAX_DY, oJ * 0.5))
                         local qJ = math.max(zG, mJ * AG)
                         local rJ = TI + jJ * math.min(qJ, kJ)
                         local sJ = isPathNearTrap(TI, rJ, zG) and wG or 0
@@ -3220,7 +3213,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 end
             end
             local uJ = getHumanoidRootPart()
-            if uJ and (Vector2.new(uJ.Position.X, uJ.Position.Z) - Vector2.new(AI.X, AI.Z)).Magnitude < JB then
+            if uJ and (Vector2.new(uJ.Position.X, uJ.Position.Z) - Vector2.new(AI.X, AI.Z)).Magnitude < Core.JB then
                 return true
             end
             return false
@@ -3277,7 +3270,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             if KJ then
                 return true
             end
-            return (LJ.Position - AJ).Magnitude <= JB
+            return (LJ.Position - AJ).Magnitude <= Core.JB
         end
         local function moveToTarget(NJ, OJ, PJ, QJ, RJ)
             getgenv() [("AliceHUB_SAE_Moving")] = true
@@ -3372,16 +3365,16 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             if wK == nil then
                 return
             end
-            local yK = (PB [wK] or 0) + 1
-            PB [wK] = yK
-            local zK = xK and #OB or math.min(yK, #OB)
-            uK [wK] = os.clock() + OB [zK]
+            local yK = (Core.PB [wK] or 0) + 1
+            Core.PB [wK] = yK
+            local zK = xK and #Core.OB or math.min(yK, #Core.OB)
+            uK [wK] = os.clock() + Core.OB [zK]
         end
         local function clearEggUidBackoff(BK)
             if BK == nil then
                 return
             end
-            PB [BK] = nil SB [BK] = nil
+            Core.PB [BK] = nil Core.SB [BK] = nil
         end
         local CK, DK = nil, false
         local EK = 3
@@ -3475,9 +3468,9 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         iL = passesStealValueFilter(hL)
                     end
                 end
-                local jL = type (hL) == ("table") and type (hL.Uid) == ("string") and hC [hL.State] and typeof(hL.BottomCFrame) == ("CFrame") and iL
+                local jL = type (hL) == ("table") and type (hL.Uid) == ("string") and Core.hC [hL.State] and typeof(hL.BottomCFrame) == ("CFrame") and iL
                 if jL then
-                    local kL = SB [hL.Uid]
+                    local kL = Core.SB [hL.Uid]
                     local lL = (kL ~= nil) and (eL < kL)
                     local mL = uK [hL.Uid]
                     if lL or not mL or eL >= mL then
@@ -3554,7 +3547,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             end
             for HL, IL in pairs(GL) do
                 if type (IL) == ("table") and IL.Uid == CL then
-                    return hC [IL.State] and true or false
+                    return Core.hC [IL.State] and true or false
                 end
             end
             return false
@@ -3577,8 +3570,8 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
         end
         local function ensureNotCarryingFieldEgg(NL)
             local OL = os.clock()
-            while dF and NL() and (os.clock() - OL) < UB do
-                if fF and (os.clock() - fF) > TB then
+            while dF and NL() and (os.clock() - OL) < Core.UB do
+                if fF and (os.clock() - fF) > Core.TB then
                     dropCarriedFieldEgg()
                     break
                 end
@@ -3604,10 +3597,10 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             if not XL or not VL then
                 return false
             end
-            return (XL.Position - VL).Magnitude <= (WL or bC)
+            return (XL.Position - VL).Magnitude <= (WL or Core.bC)
         end
         local function isNearHomePlot()
-            return isNearPosition(KB.Position)
+            return isNearPosition(Core.KB.Position)
         end
         local ZL = 2
         local function moveToWithRetries(bM, cM, dM, eM)
@@ -3712,7 +3705,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         FM [HM] = GM
                     end
                     for IM, JM in pairs(CM) do
-                        if type (JM) == ("table") and type (JM.Uid) == ("string") and hC [JM.State] and typeof(JM.BottomCFrame) == ("CFrame") then
+                        if type (JM) == ("table") and type (JM.Uid) == ("string") and Core.hC [JM.State] and typeof(JM.BottomCFrame) == ("CFrame") then
                             local KM
                             if isOwnFirstAreaEgg(JM.Uid) then
                                 KM = 0
@@ -3750,7 +3743,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         local RM = QM.BottomCFrame.Position
                         local SM = getAreaEggSlotKey(QM)
                         local TM = QM.Uid
-                        MovementTurnConfig.lompatKe(KB.Position, gM, nil, hM)
+                        MovementTurnConfig.lompatKe(Core.KB.Position, gM, nil, hM)
                         local UM = false
                         local VM = CFrame.new(RM)
                         local XM = BB.Heartbeat:Connect(function ()
@@ -3814,7 +3807,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             return false
         end
         local function claimFieldEgg(gN, hN, iN, jN, kN)
-            kN = kN or KB.Position
+            kN = kN or Core.KB.Position
             local lN = getCoreEggState()
             if not lN or type (lN.CarryFieldEgg) ~= ("function") then
                 return ("failed")
@@ -3847,7 +3840,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             local qN = kN
             local rN = os.clock()
             local sN = function ()
-                return iN() and (os.clock() - rN) < cC
+                return iN() and (os.clock() - rN) < Core.cC
             end
             if not moveToWithRetries(qN, sN, keepClaimTurnAlive) then
                 backoffEggUid(gN.rec.Uid)
@@ -3863,7 +3856,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             end
             local vN = os.clock()
             local function claimAttemptTimedOut()
-                return (os.clock() - vN) > GB
+                return (os.clock() - vN) > Core.GB
             end
             local function canContinueClaimAttempt()
                 return iN() and claimEggStillCarryable() and not claimAttemptTimedOut()
@@ -3882,7 +3875,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 if not claimEggStillCarryable() then
                     return true
                 end
-                if (os.clock() - BN) < EB then
+                if (os.clock() - BN) < Core.EB then
                     return false
                 end
                 BN = os.clock()
@@ -3893,13 +3886,13 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     return true
                 end
                 CN = CN + 1
-                if CN >= FB then
+                if CN >= Core.FB then
                     DN = true
                     return true
                 end
                 return false
             end
-            for JN = 1, HB do
+            for JN = 1, Core.HB do
                 if AN or claimAttemptTimedOut() or not iN() then
                     break
                 end
@@ -3912,7 +3905,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                             local LN = KN.Position - yN
                             LN = Vector3.new(LN.X, 0, LN.Z)
                             local MN = (LN.Magnitude > 0.1) and LN.Unit or Vector3.new(1, 0, 0)
-                            moveToTarget(yN + MN * IB, canContinueClaimAttempt, nil, keepClaimTurnAlive)
+                            moveToTarget(yN + MN * Core.IB, canContinueClaimAttempt, nil, keepClaimTurnAlive)
                         end
                     end
                     if AN or claimAttemptTimedOut() or not iN() then
@@ -3950,7 +3943,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 if not claimEggStillCarryable() then
                     break
                 end
-                local RN = _G [("SAE_InstantTP")] and MovementTurnConfig.rejectMax or DB
+                local RN = _G [("SAE_InstantTP")] and MovementTurnConfig.rejectMax or Core.DB
                 for SN = 1, RN do
                     if not iN() or claimAttemptTimedOut() then
                         break
@@ -3973,7 +3966,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                         return ("busy")
                     end
                     if SN < RN then
-                        waitHeartbeat(_G [("SAE_InstantTP")] and 0.03 or EB, iN)
+                        waitHeartbeat(_G [("SAE_InstantTP")] and 0.03 or Core.EB, iN)
                     end
                 end
             end
@@ -3992,7 +3985,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 moveToWithRetries(qN, iN, keepClaimTurnAlive)
                 return ("unreachable")
             end
-            local YN = LB.Position
+            local YN = Core.LB.Position
             local ZN = os.clock()
             local aO = ("dapat")
             local bO = os.clock()
@@ -4018,7 +4011,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                             end
                         end
                     end
-                    task.wait(gC)
+                    task.wait(Core.gC)
                 end
             end
             )
@@ -4035,10 +4028,10 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             local function isClaimEggCarried()
                 local oO = readClaimEggCached()
                 if oO ~= nil then
-                    if iC [oO.State] then
+                    if Core.iC [oO.State] then
                         return true
                     end
-                    return carryRequestReportedSuccess() and (os.clock() - bO) < mC
+                    return carryRequestReportedSuccess() and (os.clock() - bO) < Core.mC
                 end
                 if carryRequestReportedSuccess() then
                     return true
@@ -4047,41 +4040,41 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             end
             local function isClaimEggDropped()
                 local qO = readClaimEggCached()
-                if qO == nil or not hC [qO.State] then
+                if qO == nil or not Core.hC [qO.State] then
                     return false
                 end
                 return not isClaimEggCarried()
             end
             local function isClaimEggGuardCarried()
                 local sO = readClaimEggCached()
-                return (sO ~= nil and jC [sO.State]) and true or false
+                return (sO ~= nil and Core.jC [sO.State]) and true or false
             end
             local tO = 0
             local function dropStaleClaimCarry()
                 if aO ~= ("sudah") then
                     return
                 end
-                if (os.clock() - bO) < nC then
+                if (os.clock() - bO) < Core.nC then
                     return
                 end
-                if (os.clock() - tO) < oC then
+                if (os.clock() - tO) < Core.oC then
                     return
                 end
                 local vO = readClaimEggCached()
-                if vO == nil or not hC [vO.State] then
+                if vO == nil or not Core.hC [vO.State] then
                     return
                 end
                 tO = os.clock()
                 dropCarriedFieldEgg()
             end
             local function isReturnWindowActive()
-                return (os.clock() - ZN) < fC
+                return (os.clock() - ZN) < Core.fC
             end
             local function retryCarryDuringReturn()
                 if isClaimEggCarried() then
                     return true
                 end
-                if (os.clock() - BN) < EB then
+                if (os.clock() - BN) < Core.EB then
                     return false
                 end
                 BN = os.clock()
@@ -4092,17 +4085,17 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             local yO = false
             local zO = false
             local AO = nil
-            while iN() and (os.clock() - ZN) < fC do
+            while iN() and (os.clock() - ZN) < Core.fC do
                 local BO = readClaimEggCached()
                 if BO == nil then
                     break
                 end
-                if kC [BO.State] then
+                if Core.kC [BO.State] then
                     break
                 end
                 if isClaimEggGuardCarried() then
                     AO = AO or os.clock()
-                    if (os.clock() - AO) > lC then
+                    if (os.clock() - AO) > Core.lC then
                         break
                     end
                     BB.Heartbeat:Wait()
@@ -4114,7 +4107,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     moveToWithRetries(qN, CO, keepClaimTurnAlive)
                     yO = CO() and moveToWithRetries(YN, CO, keepClaimTurnAlive) or false
                     local DO = os.clock()
-                    while iN() and (readClaimEggCached() ~= nil) and isClaimEggCarried() and (os.clock() - DO) < dC do
+                    while iN() and (readClaimEggCached() ~= nil) and isClaimEggCarried() and (os.clock() - DO) < Core.dC do
                         BB.Heartbeat:Wait()
                     end
                 elseif isClaimEggDropped() then
@@ -4129,7 +4122,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                     end
                     , retryCarryDuringReturn, keepClaimTurnAlive)
                     local GO = os.clock()
-                    while iN() and (not isClaimEggCarried()) and isClaimEggDropped() and (os.clock() - GO) < eC do
+                    while iN() and (not isClaimEggCarried()) and isClaimEggDropped() and (os.clock() - GO) < Core.eC do
                         BB.Heartbeat:Wait()
                     end
                 else
@@ -4147,23 +4140,23 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 recordEggCollected(gN.rec)
                 return ("claimed")
             end
-            if kC [HO.State] then
+            if Core.kC [HO.State] then
                 backoffEggUid(gN.rec.Uid)
                 return ("stranded")
             end
-            if not hC [HO.State] then
+            if not Core.hC [HO.State] then
                 backoffEggUid(gN.rec.Uid)
                 return ("stranded")
             end
             local IO = gN.rec.Uid
             gF [IO] = nil
-            local JO = (PB [IO] or 0) + 1
-            PB [IO] = JO
-            if JO <= RB then
-                SB [IO] = os.clock() + QB
+            local JO = (Core.PB [IO] or 0) + 1
+            Core.PB [IO] = JO
+            if JO <= Core.RB then
+                Core.SB [IO] = os.clock() + Core.QB
                 uK [IO] = nil
             else
-                SB [IO] = nil uK [IO] = os.clock() + OB [math.min(JO, #OB)]
+                Core.SB [IO] = nil uK [IO] = os.clock() + Core.OB [math.min(JO, #Core.OB)]
             end
             if zO then
                 OE.dropped = OE.dropped + 1
@@ -4360,7 +4353,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                 return true
             end
             local function moveToParasiteCheckpoint()
-                return moveToWithRetries(NB.Position, function ()
+                return moveToWithRetries(Core.NB.Position, function ()
                     return true
                 end
                 , keepParasiteTurnAlive, 2)
@@ -4413,7 +4406,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
         local VP = nil
         local function startFarmWorker(XP, YP, ZP, aQ)
             XP = XP or isFarmEggEnabled
-            YP = YP or KB.Position
+            YP = YP or Core.KB.Position
             ZP = ZP or ("Farm Egg")
             aQ = aQ or {}
             TP = TP + 1
@@ -4470,20 +4463,20 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                             mQ = os.clock()
                             syncFieldEggs(true)
                         end
-                        local nQ = WB
+                        local nQ = Core.WB
                         local oQ = getSecondsUntilEggReset()
                         local pQ = (oQ ~= nil) and (oQ <= 10) or false
                         if pQ then
-                            lQ = true nQ = aC
-                        elseif oQ ~= nil and oQ <= ZB then
-                            nQ = math.min(oQ, aC)
+                            lQ = true nQ = Core.aC
+                        elseif oQ ~= nil and oQ <= Core.ZB then
+                            nQ = math.min(oQ, Core.aC)
                         else
                             if lQ then
                                 lQ = false uK = {}
                                 gF = {}
-                                PB = {}
-                                SB = {}
-                                if dF and fF and (os.clock() - fF) > TB then
+                                Core.PB = {}
+                                Core.SB = {}
+                                if dF and fF and (os.clock() - fF) > Core.TB then
                                     dF, eF, fF = false, nil, nil
                                 end
                                 syncFieldEggs(true)
@@ -4544,17 +4537,17 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                                         getgenv() [("AliceHUB_SAE_TreadmillSuppressed")] = false
                                     end
                                 end
-                                nQ = _G [("SAE_AutoTreadmill")] and 0.15 or VB
+                                nQ = _G [("SAE_AutoTreadmill")] and 0.15 or Core.VB
                             else
                                 FK = 0
                                 getgenv() [("AliceHUB_SAE_TreadmillSuppressed")] = true
                                 local JQ = getgenv() [("AliceHUB_SAE_PlaceHatchBusy")] or getgenv() [("AliceHUB_SAE_EquipBestBusy")]
                                 if JQ then
-                                    nQ = YB
+                                    nQ = Core.YB
                                 else
                                     local KQ = KO.take(("steal-egg"), 10)
                                     if not KQ then
-                                        nQ = YB
+                                        nQ = Core.YB
                                     else
                                         markEggObserved(IQ.area)
                                         getgenv() [("AliceHUB_SAE_FarmEggBusy")] = true
@@ -4578,15 +4571,15 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
                                             gP = gP + 1
                                         end
                                         if MQ == ("offzone") then
-                                            nQ = YB
+                                            nQ = Core.YB
                                         elseif MQ == ("dropped") then
-                                            nQ = rC
+                                            nQ = Core.rC
                                         elseif MQ == ("busy") or MQ == ("stranded") then
-                                            nQ = XB
+                                            nQ = Core.XB
                                         elseif MQ == ("gone") then
                                             syncFieldEggs(false)
                                         else
-                                            nQ = qC
+                                            nQ = Core.qC
                                         end
                                     end
                                 end
@@ -4634,19 +4627,19 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             startFarmWorker(ZQ, aR, bR, dR)
         end
         local function startFarmEgg(fR)
-            startExclusiveFarmMode(isFarmEggEnabled, KB.Position, ("Farm Egg"), fR)
+            startExclusiveFarmMode(isFarmEggEnabled, Core.KB.Position, ("Farm Egg"), fR)
         end
         local function startAAFarmEgg(hR)
-            startExclusiveFarmMode(isAAFarmEggEnabled, MB.Position, ("AA Farm Egg"), hR)
+            startExclusiveFarmMode(isAAFarmEggEnabled, Core.MB.Position, ("AA Farm Egg"), hR)
         end
         local function startStealParasiteEgg(jR)
             startExclusiveFarmMode(function ()
                 return _G [("SAE_StealParasite")] and true or false
             end
-            , NB.Position, ("Steal Parasite Egg"), jR, {parasiteOnly = true, onClaimed = feedClaimedEggToParasite})
+            , Core.NB.Position, ("Steal Parasite Egg"), jR, {parasiteOnly = true, onClaimed = feedClaimedEggToParasite})
         end
         local function startTakeRiftEgg(kR)
-            startExclusiveFarmMode(isTakeRiftEggEnabled, KB.Position, ("Auto Take Rift Egg"), kR, {riftOnly = true})
+            startExclusiveFarmMode(isTakeRiftEggEnabled, Core.KB.Position, ("Auto Take Rift Egg"), kR, {riftOnly = true})
         end
         local function setFarmEggEnabled(lR)
             _G [("SAE_FarmEgg")] = lR and true or false
@@ -4741,7 +4734,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             startExclusiveFarmMode(function ()
                 return _G [("SAE_CompleteIndex")] and true or false
             end
-            , KB.Position, ("Auto Complete Index"), true, {indexOnly = true, onClaimed = function (sR)
+            , Core.KB.Position, ("Auto Complete Index"), true, {indexOnly = true, onClaimed = function (sR)
                 if type (sR) ~= ("table") or type (sR.Uid) ~= ("string") then
                     return
                 end
@@ -5010,12 +5003,12 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
         end)
 
         local function setTweenSpeed(gS)
-            gS = tonumber(gS) or vC
-            if gS < sC then
-                gS = sC
+            gS = tonumber(gS) or Core.vC
+            if gS < Core.sC then
+                gS = Core.sC
             end
-            if gS > uC then
-                gS = uC
+            if gS > Core.uC then
+                gS = Core.uC
             end
             _G [("SAE_TweenSpeed")] = gS
             return gS
@@ -5026,7 +5019,7 @@ getgenv() [("AliceHUB_RunBundle")] = function ()
             Flag = ("SAE_TweenSpeed"),
             ID = ("SAE_TweenSpeed"),
             Placeholder = ("300"),
-            Value = tostring(_G [("SAE_TweenSpeed")] or vC),
+            Value = tostring(_G [("SAE_TweenSpeed")] or Core.vC),
             Callback = function (hS)
                 local parsed = tonumber(hS)
                 if parsed then
@@ -13654,29 +13647,17 @@ task.defer(function()
     notify("AliceHUB · Latest Dump", "Compact latest-dump modules loaded", 4)
 end)
 ]=]
-
-stage("Payload bytes = " .. tostring(#PAYLOAD))
-stage("BEFORE exact loadstring(payload)")
-
-local started = os.clock()
-local ok, chunk, compileErr = pcall(function()
-    local fn, err = loadstring(PAYLOAD)
-    return fn, err
-end)
-local elapsed = os.clock() - started
-
+s("Payload bytes = "..#PAYLOAD)
+s("BEFORE loadstring")
+local st=os.clock()
+local ok,fn,err=pcall(function() local f,e=loadstring(PAYLOAD) return f,e end)
+local dt=os.clock()-st
 if not ok then
-    stage("THREW after " .. string.format("%.3fs", elapsed) .. " -> " .. tostring(chunk))
-elseif type(chunk) ~= "function" then
-    stage("COMPILE FAIL after " .. string.format("%.3fs", elapsed) .. " -> " .. tostring(compileErr))
+    s("THREW "..string.format("%.3fs",dt).." -> "..tostring(fn))
+elseif type(fn)~="function" then
+    s("COMPILE FAIL "..string.format("%.3fs",dt).." -> "..tostring(err))
 else
-    stage("COMPILE PASS in " .. string.format("%.3fs", elapsed))
-    stage("IMPORTANT: payload NOT executed")
+    s("COMPILE PASS "..string.format("%.3fs",dt))
+    s("Payload NOT executed")
 end
-
-stage("DONE")
-
-local copy = setclipboard or toclipboard
-if type(copy) == "function" then
-    pcall(copy, table.concat(lines, "\n"))
-end
+s("DONE")
