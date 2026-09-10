@@ -1,43 +1,9 @@
--- AliceHUB Arceus Lite Exact Payload Compile Probe V5
--- COMPILE ONLY: payload is NEVER executed.
-local CoreGui = game:GetService("CoreGui")
+-- AliceHUB · Anime Dice · Arceus Register Fix TEST
+-- Refactor only: late top-level helpers moved into existing C namespace
+-- to stay below Arceus/Luau local-register limit.
+-- Game logic intentionally unchanged.
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "AliceHUB_ExactCompileProbeV5"
-gui.ResetOnSpawn = false
-
-local parent = CoreGui
-if type(gethui) == "function" then
-    local ok, hui = pcall(gethui)
-    if ok and hui then parent = hui end
-end
-gui.Parent = parent
-
-local label = Instance.new("TextLabel")
-label.Size = UDim2.fromOffset(620, 310)
-label.Position = UDim2.new(0.5, -310, 0.5, -155)
-label.BackgroundColor3 = Color3.fromRGB(18,18,18)
-label.BorderSizePixel = 0
-label.TextColor3 = Color3.new(1,1,1)
-label.TextXAlignment = Enum.TextXAlignment.Left
-label.TextYAlignment = Enum.TextYAlignment.Top
-label.TextWrapped = true
-label.Font = Enum.Font.Code
-label.TextSize = 15
-label.Parent = gui
-
-local lines = {}
-local function stage(s)
-    lines[#lines+1] = s
-    label.Text = "AliceHUB · Exact Payload Compile V5\n\n" .. table.concat(lines, "\n")
-    print("[AliceHUB ExactCompile]", s)
-    task.wait(0.8)
-end
-
-stage("UI READY")
-
-stage("Target = animedice.lua")
-local PAYLOAD = [=[-- AliceHUB Anime Dice · Auto Sell Rarity Fix
+-- AliceHUB Anime Dice · Auto Sell Rarity Fix
 --[[
     AliceHUB · Anime Dice
 ]]
@@ -5280,7 +5246,7 @@ C.AliceWhiteScreen = {
     disabled3D = false,
 }
 
-local function cleanupAliceWhiteScreenGui()
+C.cleanupAliceWhiteScreenGui = function()
     local roots = {LocalPlayer:FindFirstChildOfClass("PlayerGui"), CoreGui}
     if type(gethui) == "function" then
         local ok, root = pcall(gethui)
@@ -5294,7 +5260,7 @@ local function cleanupAliceWhiteScreenGui()
     end
 end
 
-local function getPing()
+C.getPing = function()
     local value = 0
     pcall(function()
         value = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
@@ -5302,11 +5268,11 @@ local function getPing()
     return value
 end
 
-local function activeAutomationText()
+C.activeAutomationText = function()
     return webhookActiveAutomationText()
 end
 
-local function stopAliceWhiteScreen()
+C.stopAliceWhiteScreen = function()
     local wasEnabled = C.AliceWhiteScreen.enabled
     C.AliceWhiteScreen.enabled = false
     C.AliceWhiteScreen.generation += 1
@@ -5321,7 +5287,7 @@ local function stopAliceWhiteScreen()
     end
     C.AliceWhiteScreen.savedFPSCap = nil
 
-    cleanupAliceWhiteScreenGui()
+    C.cleanupAliceWhiteScreenGui()
     C.AliceWhiteScreen.gui = nil
 
     if wasEnabled and State.AD_WhiteScreenHideUI == true then
@@ -5329,7 +5295,7 @@ local function stopAliceWhiteScreen()
     end
 end
 
-local function whiteScreenCapText()
+C.whiteScreenCapText = function()
     if type(getfpscap) == "function" then
         local ok, cap = pcall(getfpscap)
         if ok and tonumber(cap) then return tostring(math.floor(tonumber(cap))) end
@@ -5337,7 +5303,7 @@ local function whiteScreenCapText()
     return tostring(math.floor(tonumber(State.AD_WhiteScreenFPSCap) or 10))
 end
 
-local function applyWhiteScreenFpsCap()
+C.applyWhiteScreenFpsCap = function()
     local cap = math.clamp(math.floor(tonumber(State.AD_WhiteScreenFPSCap) or 10), 5, 30)
     -- Simpan FPS cap sebelum diubah.
     if type(setfpscap) == "function" and type(getfpscap) == "function" then
@@ -5351,9 +5317,9 @@ local function applyWhiteScreenFpsCap()
     return false
 end
 
-local function startAliceWhiteScreen()
+C.startAliceWhiteScreen = function()
     if C.AliceWhiteScreen.enabled then return end
-    stopAliceWhiteScreen()
+    C.stopAliceWhiteScreen()
     C.AliceWhiteScreen.enabled = true
     ensureAliceSessionBaseline()
     C.AliceWhiteScreen.startAt = C.AliceSessionStats.startAt
@@ -5369,9 +5335,9 @@ local function startAliceWhiteScreen()
         local ok = pcall(function() RunService:Set3dRenderingEnabled(false) end)
         C.AliceWhiteScreen.disabled3D = ok == true
     end
-    applyWhiteScreenFpsCap()
+    C.applyWhiteScreenFpsCap()
 
-    cleanupAliceWhiteScreenGui()
+    C.cleanupAliceWhiteScreenGui()
 
     local screen = Instance.new("ScreenGui")
     screen.Name = "AliceHUB_AnimeDice_WhiteScreen"
@@ -5418,7 +5384,7 @@ local function startAliceWhiteScreen()
         if toggle and type(toggle.SetValue) == "function" then
             toggle:SetValue(false)
         else
-            stopAliceWhiteScreen()
+            C.stopAliceWhiteScreen()
         end
     end)
 
@@ -5471,12 +5437,12 @@ local function startAliceWhiteScreen()
                 "ALICEHUB",
                 "Anime Dice  ·  White Screen V2",
                 "User: " .. tostring(LocalPlayer.Name),
-                string.format("Uptime: %02d:%02d:%02d   Ping: %dms   Players: %d", hours, minutes, seconds, getPing(), #Players:GetPlayers()),
+                string.format("Uptime: %02d:%02d:%02d   Ping: %dms   Players: %d", hours, minutes, seconds, C.getPing(), #Players:GetPlayers()),
                 string.format("Money: %s  (%s)", compactNumber(data.Money), signedCompact(moneyDelta)),
                 string.format("Rolls: %s (%s)   Rebirth: %s (%s)", compactNumber(data.Rolls), signedCompact(rollsDelta), compactNumber(data.Rebirth), signedCompact(rebirthDelta)),
                 string.format("Dice: %s   Units: %d", tostring(data.Dice or "N/A"), inventoryUnits),
-                "Auto: " .. activeAutomationText(),
-                string.format("3D: %s   FPS Cap: %s", C.AliceWhiteScreen.disabled3D and "OFF" or "ON", whiteScreenCapText()),
+                "Auto: " .. C.activeAutomationText(),
+                string.format("3D: %s   FPS Cap: %s", C.AliceWhiteScreen.disabled3D and "OFF" or "ON", C.whiteScreenCapText()),
                 string.format("Boost FPS: %s   Ultra Performance: %s", State.AD_BoostFPS and "ON" or "OFF", State.AD_UltraPerformance and "ON" or "OFF"),
                 "Tap EXIT WHITE SCREEN to return to AliceHUB",
             }
@@ -5488,8 +5454,8 @@ local function startAliceWhiteScreen()
     end)
 end
 
-local function setAliceWhiteScreen(value)
-    if value then startAliceWhiteScreen() else stopAliceWhiteScreen() end
+C.setAliceWhiteScreen = function(value)
+    if value then C.startAliceWhiteScreen() else C.stopAliceWhiteScreen() end
 end
 
 -- ============================================================
@@ -5504,7 +5470,7 @@ C.BoostFPSRestore = nil
 C.UltraPerfGeneration = 0
 C.UltraPerfConnections = {}
 
-local function disconnectUltraPerfConnections()
+C.disconnectUltraPerfConnections = function()
     for _, connection in ipairs(C.UltraPerfConnections) do
         pcall(function()
             connection:Disconnect()
@@ -5513,7 +5479,7 @@ local function disconnectUltraPerfConnections()
     C.UltraPerfConnections = {}
 end
 
-local function isAliceHUBInstance(instance)
+C.isAliceHUBInstance = function(instance)
     if not instance then return false end
     local name = string.lower(tostring(instance.Name or ""))
     if string.find(name, "alicehub", 1, true) or string.find(name, "obsidian", 1, true) then
@@ -5525,7 +5491,7 @@ local function isAliceHUBInstance(instance)
     return ok and (string.find(fullName, "alicehub", 1, true) ~= nil or string.find(fullName, "obsidian", 1, true) ~= nil)
 end
 
-local function setBoostFpsEnabled(enabled)
+C.setBoostFpsEnabled = function(enabled)
     enabled = enabled == true
     if enabled then
         if not C.BoostFPSRestore then
@@ -5560,9 +5526,9 @@ local function setBoostFpsEnabled(enabled)
     end
 end
 
-local function isProtectedUltraInstance(instance)
+C.isProtectedUltraInstance = function(instance)
     if not instance then return true end
-    if isAliceHUBInstance(instance) then return true end
+    if C.isAliceHUBInstance(instance) then return true end
     local character = LocalPlayer.Character
     if character and (instance == character or instance:IsDescendantOf(character)) then
         return true
@@ -5570,8 +5536,8 @@ local function isProtectedUltraInstance(instance)
     return false
 end
 
-local function optimizeUltraInstance(instance)
-    if not instance or not instance.Parent or isProtectedUltraInstance(instance) then return end
+C.optimizeUltraInstance = function(instance)
+    if not instance or not instance.Parent or C.isProtectedUltraInstance(instance) then return end
 
     if instance:IsA("BasePart") then
         pcall(function()
@@ -5639,12 +5605,12 @@ local function optimizeUltraInstance(instance)
     end
 end
 
-local function runUltraPerformancePass(generation)
+C.runUltraPerformancePass = function(generation)
     local function active()
         return Runtime.alive and State.AD_UltraPerformance == true and C.UltraPerfGeneration == generation
     end
 
-    setBoostFpsEnabled(true)
+    C.setBoostFpsEnabled(true)
 
     pcall(function()
         if C.Terrain then
@@ -5662,7 +5628,7 @@ local function runUltraPerformancePass(generation)
 
     pcall(function()
         for _, child in ipairs(C.Lighting:GetChildren()) do
-            optimizeUltraInstance(child)
+            C.optimizeUltraInstance(child)
         end
     end)
 
@@ -5674,7 +5640,7 @@ local function runUltraPerformancePass(generation)
             while active() and index <= #descendants and processed < 350 do
                 local instance = descendants[index]
                 if instance and instance.Parent then
-                    pcall(optimizeUltraInstance, instance)
+                    pcall(C.optimizeUltraInstance, instance)
                 end
                 index = index + 1
                 processed = processed + 1
@@ -5690,7 +5656,7 @@ local function runUltraPerformancePass(generation)
     C.UltraPerfConnections[#C.UltraPerfConnections + 1] = workspace.DescendantAdded:Connect(function(instance)
         if active() then
             task.defer(function()
-                pcall(optimizeUltraInstance, instance)
+                pcall(C.optimizeUltraInstance, instance)
             end)
         end
     end)
@@ -5698,14 +5664,14 @@ local function runUltraPerformancePass(generation)
     C.UltraPerfConnections[#C.UltraPerfConnections + 1] = C.Lighting.ChildAdded:Connect(function(instance)
         if active() then
             task.defer(function()
-                pcall(optimizeUltraInstance, instance)
+                pcall(C.optimizeUltraInstance, instance)
             end)
         end
     end)
 end
 
-local function setUltraPerformanceEnabled(enabled)
-    disconnectUltraPerfConnections()
+C.setUltraPerformanceEnabled = function(enabled)
+    C.disconnectUltraPerfConnections()
     C.UltraPerfGeneration = C.UltraPerfGeneration + 1
     if enabled ~= true then
         setLastAction("Ultra Performance stopped · rejoin to restore visuals")
@@ -5715,7 +5681,7 @@ local function setUltraPerformanceEnabled(enabled)
     task.spawn(function()
         task.wait(0.1)
         if Runtime.alive and State.AD_UltraPerformance == true and C.UltraPerfGeneration == generation then
-            runUltraPerformancePass(generation)
+            C.runUltraPerformancePass(generation)
         end
     end)
 end
@@ -5730,21 +5696,21 @@ C.Community = C.Tabs.Settings:AddRightGroupbox("Community & License")
 
 addToggle(C.Utility, "AD_AntiAFK", "Anti AFK", true, "Pulse berkala + fallback Idled.")
 addSlider(C.Utility, "AD_AntiAFKInterval", "Anti AFK Pulse", 20, 120, 45, 0, "s")
-addToggle(C.Utility, "AD_WhiteScreen", "White Screen V2", false, "Layar AFK dengan opsi matikan 3D dan batas FPS.", setAliceWhiteScreen)
+addToggle(C.Utility, "AD_WhiteScreen", "White Screen V2", false, "Layar AFK dengan opsi matikan 3D dan batas FPS.", C.setAliceWhiteScreen)
 addToggle(C.Utility, "AD_WhiteScreenDisable3D", "White Screen · Disable 3D", true, "Mematikan render 3D selama White Screen aktif.")
 addToggle(C.Utility, "AD_WhiteScreenHideUI", "White Screen · Hide Main UI", true, "Menyembunyikan menu AliceHUB saat White Screen aktif.")
 addSlider(C.Utility, "AD_WhiteScreenFPSCap", "White Screen · FPS Cap", 5, 30, 10, 0, " FPS", function(value)
     if C.AliceWhiteScreen.enabled then
         State.AD_WhiteScreenFPSCap = value
-        applyWhiteScreenFpsCap()
+        C.applyWhiteScreenFpsCap()
     end
 end)
 addToggle(C.Utility, "AD_AutoReconnect", "Auto Reconnect", true, "Reconnect saat Roblox terputus.")
 addToggle(C.Utility, "AD_AutoRejoin", "Scheduled Auto Rejoin", false, "Rejoin berkala untuk sesi AFK panjang.")
 addSlider(C.Utility, "AD_AutoRejoinMinutes", "Rejoin Every", 5, 120, 30, 0, "m")
 
-addToggle(C.Performance, "AD_BoostFPS", "Boost FPS + Low Graphics", false, "Mengurangi efek visual untuk menaikkan FPS.", setBoostFpsEnabled)
-addToggle(C.Performance, "AD_UltraPerformance", "Ultra Performance", false, "Mengurangi visual lebih agresif. Rejoin untuk restore penuh.", setUltraPerformanceEnabled)
+addToggle(C.Performance, "AD_BoostFPS", "Boost FPS + Low Graphics", false, "Mengurangi efek visual untuk menaikkan FPS.", C.setBoostFpsEnabled)
+addToggle(C.Performance, "AD_UltraPerformance", "Ultra Performance", false, "Mengurangi visual lebih agresif. Rejoin untuk restore penuh.", C.setUltraPerformanceEnabled)
 
 C.UISettings:AddLabel("Theme: AliceHUB UI", true)
 C.UISettings:AddLabel("Subtitle: Anime Dice", true)
@@ -5788,7 +5754,7 @@ C.Community:AddLabel("Status license mengikuti data dari AliceHUB Loader.", true
 
 -- Floating AliceHUB logo.
 
-local function remoteHealthText()
+C.remoteHealthText = function()
     local remotes = {
         {"RollDice", C.RollRF}, {"RollMessage", C.RollMessageRE}, {"SetAutoRoll", C.SetAutoRollRE},
         {"BuyDice", C.BuyDiceRE}, {"EquipDice", C.EquipDiceRE}, {"BuyUpgrade", C.BuyUpgradeRE},
@@ -5818,7 +5784,7 @@ end
 -- ============================================================
 -- Anti-AFK + reconnect
 -- ============================================================
-local function antiAfkPulse()
+C.antiAfkPulse = function()
     if State.AD_AntiAFK ~= true or not Runtime.alive then return end
 
     -- Pulse Anti AFK.
@@ -5846,14 +5812,14 @@ local function antiAfkPulse()
 end
 
 rememberConnection(LocalPlayer.Idled:Connect(function()
-    task.spawn(antiAfkPulse)
+    task.spawn(C.antiAfkPulse)
 end))
 
 task.spawn(function()
     while Runtime.alive do
         task.wait(math.max(20, tonumber(State.AD_AntiAFKInterval) or 45))
         if Runtime.alive and State.AD_AntiAFK == true then
-            antiAfkPulse()
+            C.antiAfkPulse()
         end
     end
 end)
@@ -5933,7 +5899,7 @@ task.spawn(function()
                 tostring(data.Dice or "N/A"),
                 units,
                 compactNumber(getInventoryAmount("Trait Reroll")),
-                getPing()
+                C.getPing()
             )
             pcall(function() C.StatusLabel:SetText(text) end)
         else
@@ -5963,7 +5929,7 @@ task.spawn(function()
         pcall(function() if C.BuffStatusLabel then C.BuffStatusLabel:SetText(effectiveBuffText()) end end)
         pcall(updateFavoriteSummary)
         pcall(updateInventoryManagerSummary)
-        pcall(function() if C.RemoteHealthLabel then C.RemoteHealthLabel:SetText(remoteHealthText()) end end)
+        pcall(function() if C.RemoteHealthLabel then C.RemoteHealthLabel:SetText(C.remoteHealthText()) end end)
         pcall(updateTradeStatusLabel)
         task.wait(0.6)
     end
@@ -5972,7 +5938,7 @@ end)
 -- ============================================================
 -- Start saved automation states
 -- ============================================================
-local function kickSavedToggle(id)
+C.kickSavedToggle = function(id)
     local toggle = Toggles[id]
     if toggle and toggle.Value == true and type(toggle.SetValue) == "function" then
         toggle:SetValue(false)
@@ -5987,7 +5953,7 @@ for _, id in ipairs({
     "AD_AutoQuestClaim", "AD_AutoQuestBuy", "AD_AutoUseSpin", "AD_AutoUseBoost", "AD_AutoTutorialAdvance",
     "AD_WhiteScreen", "AD_BoostFPS", "AD_UltraPerformance",
 }) do
-    kickSavedToggle(id)
+    C.kickSavedToggle(id)
 end
 
 -- Coba claim reward saat masuk.
@@ -6014,39 +5980,12 @@ ENV.AliceHUB_AnimeDice_Cleanup = function()
     Runtime.alive = false
     for id in pairs(Runtime.loopTokens) do stopLoop(id) end
     pcall(function() fire(C.SetAutoRollRE, false) end)
-    pcall(stopAliceWhiteScreen)
-    pcall(function() setUltraPerformanceEnabled(false) end)
-    pcall(function() setBoostFpsEnabled(false) end)
+    pcall(C.stopAliceWhiteScreen)
+    pcall(function() C.setUltraPerformanceEnabled(false) end)
+    pcall(function() C.setBoostFpsEnabled(false) end)
     pcall(cleanupLogo)
     pcall(__aliceBootDestroy)
     for _, connection in ipairs(Runtime.connections) do pcall(function() connection:Disconnect() end) end
     pcall(function() Library:Unload() end)
     if ENV.AliceHUB_AnimeDice_Library == Library then ENV.AliceHUB_AnimeDice_Library = nil end
-end
-]=]
-
-stage("Payload bytes = " .. tostring(#PAYLOAD))
-stage("BEFORE exact loadstring(payload)")
-
-local started = os.clock()
-local ok, chunk, compileErr = pcall(function()
-    local fn, err = loadstring(PAYLOAD)
-    return fn, err
-end)
-local elapsed = os.clock() - started
-
-if not ok then
-    stage("THREW after " .. string.format("%.3fs", elapsed) .. " -> " .. tostring(chunk))
-elseif type(chunk) ~= "function" then
-    stage("COMPILE FAIL after " .. string.format("%.3fs", elapsed) .. " -> " .. tostring(compileErr))
-else
-    stage("COMPILE PASS in " .. string.format("%.3fs", elapsed))
-    stage("IMPORTANT: payload NOT executed")
-end
-
-stage("DONE")
-
-local copy = setclipboard or toclipboard
-if type(copy) == "function" then
-    pcall(copy, table.concat(lines, "\n"))
 end
