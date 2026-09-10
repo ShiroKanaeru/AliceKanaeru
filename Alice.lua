@@ -1,38 +1,35 @@
--- AliceHUB v3.0.3 · Register-Safe TEST · stealachicken.lua
--- Late chunk-scope helpers moved into Runtime namespace for executor compiler compatibility.
+-- AliceHUB v3.0.3 · Register-Safe TEST · pullanegg.lua
+-- Late chunk-scope helpers moved into State namespace for executor compiler compatibility.
 -- Logic/UI behavior intentionally unchanged.
 
 --[[
-    AliceHUB · Steal a Chicken
-    PlaceId: 76503495566299
+    AliceHUB · Pull An Egg
+    V5 RELAY DROP FIX · SAE / Anime Dice V7 exact native UI + direct backend
+    PlaceId: 70640255604878
 
-    Native AliceHUB / SAE UI renderer.
-    Backend reconstructed from the client dump supplied for Steal a Chicken.
-    V1.7 · AUTO STORE HELD FIX]]
+    UI renderer is the same AliceHUB native renderer used by the current SAE build.
+    Game backend initializes after the UI so the menu remains visible even while
+    Pull An Egg's client library/plot is still loading.
+]]
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
-local StarterGui = game:GetService("StarterGui")
-local Lighting = game:GetService("Lighting")
-local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then return end
-
 local ENV = (getgenv and getgenv()) or _G
-if type(ENV.AliceHUB_StealAChicken_Cleanup) == "function" then
-    pcall(ENV.AliceHUB_StealAChicken_Cleanup)
+
+if type(ENV.AliceHUB_PullAnEgg_Cleanup) == "function" then
+    pcall(ENV.AliceHUB_PullAnEgg_Cleanup)
     task.wait(0.08)
 end
 
@@ -1033,12 +1030,12 @@ end
 
 
 local Library = buildAliceNativeLibrary(
-    "Steal a Chicken",
-    "AliceHUB_StealAChicken_NativeUI",
+    "Pull An Egg",
+    "AliceHUB_PullAnEgg_NativeUI",
     ALICE_LOGO_ASSET
 )
 
-local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(1280, 720)
+local viewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(1280,720)
 local compact = viewport.X <= 1700 and viewport.Y <= 900
 local window = Library:CreateWindow({
     Title = "AliceHUB",
@@ -1046,9 +1043,9 @@ local window = Library:CreateWindow({
     CornerRadius = 4,
 })
 
--- Floating AliceHUB button.
+-- Floating Alice logo, same behavior as the other AliceHUB games.
 local logoGui = Instance.new("ScreenGui")
-logoGui.Name = "AliceHUB_StealAChicken_LogoGui"
+logoGui.Name = "AliceHUB_PullAnEgg_LogoGui"
 logoGui.ResetOnSpawn = false
 logoGui.IgnoreGuiInset = true
 logoGui.DisplayOrder = 1000000
@@ -1060,19 +1057,17 @@ if type(gethui) == "function" then
     if ok and root then logoRoot = root end
 end
 logoRoot = logoRoot or LocalPlayer:WaitForChild("PlayerGui")
-local oldLogoGui = logoRoot:FindFirstChild("AliceHUB_StealAChicken_LogoGui")
-if oldLogoGui and oldLogoGui ~= logoGui then pcall(function() oldLogoGui:Destroy() end) end
 logoGui.Parent = logoRoot
 
 local oldLogo = logoRoot:FindFirstChild("AliceHUBLogoButton")
-if oldLogo then pcall(function() oldLogo:Destroy() end) end
+if oldLogo and oldLogo ~= logoGui then pcall(function() oldLogo:Destroy() end) end
 
 local logo = Instance.new("ImageButton")
 logo.Name = "AliceHUBLogoButton"
 logo.AnchorPoint = Vector2.new(0, 0.5)
 logo.Position = UDim2.new(0, 14, 0.5, 0)
 logo.Size = UDim2.fromOffset(62, 62)
-logo.BackgroundColor3 = Color3.fromRGB(24, 15, 19)
+logo.BackgroundColor3 = Color3.fromRGB(24,15,19)
 logo.BorderSizePixel = 0
 logo.Image = ALICE_LOGO_ASSET
 logo.ScaleType = Enum.ScaleType.Crop
@@ -1092,283 +1087,134 @@ logoFallback.ZIndex = logo.ZIndex + 1
 logoFallback.Parent = logo
 __aliceRegisterLogoTarget(logo, logoFallback)
 
-local logoCorner = Instance.new("UICorner")
-logoCorner.CornerRadius = UDim.new(1, 0)
-logoCorner.Parent = logo
-local logoStroke = Instance.new("UIStroke")
-logoStroke.Color = Color3.fromRGB(181, 48, 83)
-logoStroke.Thickness = 2
-logoStroke.Transparency = 0.08
-logoStroke.Parent = logo
-
-local Runtime = {
-    alive = true,
-    connections = {},
-    activeTween = nil,
-    moveSerial = 0,
-    moving = false,
-    stealing = false,
-    action = "Initializing",
-    target = "-",
-    lastNestKey = nil,
-    lastTarget = nil,
-    started = os.clock(),
-    backendReady = false,
-    backendError = nil,
-    whiteScreen = nil,
-    whiteWas3D = true,
-    ultraConnections = {},
-    ultraGeneration = 0,
-    noclipOriginal = setmetatable({}, {__mode = "k"}),
-    characterManager = nil,
-    originalApplyForce = nil,
-    guardParts = setmetatable({}, {__mode = "k"}),
-    -- Once a nest is consumed, keep it blocked until we have actually observed it
-    -- empty and then see a Chicken/Egg appear again. This matches the game's nest reset
-    -- cycle and avoids retargeting stale nest attributes or the stolen chicken.
-    consumedNests = setmetatable({}, {__mode = "k"}),
-    lastPenUpgradeTry = 0,
-    nextStealAt = 0,
-}
-
-local function rememberConnection(c)
-    if c then Runtime.connections[#Runtime.connections + 1] = c end
-    return c
+do
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(1,0)
+    c.Parent = logo
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.fromRGB(181,48,83)
+    s.Thickness = 2
+    s.Transparency = 0.08
+    s.Parent = logo
 end
 
-local logoDragging, logoMoved, logoStart, logoPos = false, false, nil, nil
-rememberConnection(logo.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+local logoDragging = false
+local logoMoved = false
+local logoStart, logoPos
+logo.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
         logoDragging = true
         logoMoved = false
         logoStart = input.Position
         logoPos = logo.Position
-        rememberConnection(input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then logoDragging = false end
-        end))
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                logoDragging = false
+            end
+        end)
     end
-end))
-rememberConnection(UserInputService.InputChanged:Connect(function(input)
-    if logoDragging and logoStart and logoPos and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if logoDragging and logoStart and logoPos
+        and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - logoStart
         if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then logoMoved = true end
-        logo.Position = UDim2.new(logoPos.X.Scale, logoPos.X.Offset + delta.X, logoPos.Y.Scale, logoPos.Y.Offset + delta.Y)
+        logo.Position = UDim2.new(
+            logoPos.X.Scale, logoPos.X.Offset + delta.X,
+            logoPos.Y.Scale, logoPos.Y.Offset + delta.Y
+        )
     end
-end))
-rememberConnection(logo.Activated:Connect(function()
-    if logoMoved then logoMoved = false return end
+end)
+logo.Activated:Connect(function()
+    if logoMoved then
+        logoMoved = false
+        return
+    end
     Library:Toggle()
-end))
-rememberConnection(UserInputService.InputBegan:Connect(function(input, processed)
+end)
+UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then Library:Toggle() end
-end))
-
-local function notify(text, duration)
-    pcall(function()
-        Library:Notify({Title = "AliceHUB", Description = tostring(text), Time = duration or 4})
-    end)
-end
-
-local function setAction(text)
-    Runtime.action = tostring(text or "-")
-end
-
-local function fullName(inst)
-    local ok, result = pcall(function() return inst:GetFullName() end)
-    return ok and result or tostring(inst)
-end
-
-local function safeRequire(module)
-    if not module or not module:IsA("ModuleScript") then return nil end
-    local ok, result = pcall(require, module)
-    if ok then return result end
-    return nil
-end
-
-local function findModule(root, name, mustContain)
-    if not root then return nil end
-    for _, inst in ipairs(root:GetDescendants()) do
-        if inst:IsA("ModuleScript") and inst.Name == name then
-            if not mustContain or fullName(inst):lower():find(tostring(mustContain):lower(), 1, true) then
-                return inst
-            end
-        end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        Library:Toggle()
     end
-    return nil
-end
-
-local function getPath(root, ...)
-    local node = root
-    for _, name in ipairs({...}) do
-        if not node then return nil end
-        node = node:FindFirstChild(name)
-    end
-    return node
-end
-
-local function moduleAtOrFind(pathParts, fallbackName, hint)
-    local node = ReplicatedStorage
-    for _, part in ipairs(pathParts) do
-        node = node and node:FindFirstChild(part)
-    end
-    if node and node:IsA("ModuleScript") then return safeRequire(node), node end
-    local fallback = findModule(ReplicatedStorage, fallbackName, hint)
-    return safeRequire(fallback), fallback
-end
-
-local function remoteFire(remote, ...)
-    if not remote or type(remote.fire) ~= "function" then return false end
-    local args = table.pack(...)
-    local ok = pcall(function()
-        remote:fire(table.unpack(args, 1, args.n))
-    end)
-    return ok
-end
-
-local function remoteRequest(remote, ...)
-    if not remote or type(remote.request) ~= "function" then return false, nil end
-    local args = table.pack(...)
-    local ok, promise = pcall(function()
-        return remote:request(table.unpack(args, 1, args.n))
-    end)
-    if not ok then return false, nil end
-    return true, promise
-end
-
-local function awaitRemoteRequest(remote, timeout, ...)
-    local ok, promise = remoteRequest(remote, ...)
-    if not ok then return false, nil end
-    if type(promise) ~= "table" and type(promise) ~= "userdata" then
-        return true, promise
-    end
-
-    local done, success, result = false, false, nil
-    local hooked = pcall(function()
-        promise:andThen(function(value)
-            success = true
-            result = value
-            done = true
-        end):catch(function()
-            success = false
-            done = true
-        end)
-    end)
-    if not hooked then return true, promise end
-
-    local deadline = os.clock() + math.max(0.1, tonumber(timeout) or 1.5)
-    while Runtime.alive and not done and os.clock() < deadline do
-        RunService.Heartbeat:Wait()
-    end
-    return done and success, result
-end
+end)
 
 local Config = {
-    AutoSteal = false,
-    TargetPriority = "Highest Rarity",
-    RarityFilter = {},
-    IncludeInsane = true,
-    MovementMode = "Smart",
-    TweenSpeed = 350,
-    StealDelay = 0.65,
-    AutoReturn = true,
-    AutoDrop = true,
-    AutoRecover = true,
-    ReturnDelay = 0.15,
+    AutoTrain = false,
+    TrainDelay = 0.50,
+    AutoBuyBestDumbell = false,
 
-    AutoCollectEggs = false,
-    CollectDelay = 0.75,
-    AutoOpenEggs = false,
-    OpenDelay = 0.35,
-    AutoSell = false,
-    SellMode = "Sell All",
-    SellRarity = {},
-    SellDelay = 1.0,
-    NeverSellFavorites = true,
-
-    AutoTreadmillUpgrade = false,
-    AutoSpeedUpgrade = false,
-    AutoBaseUpgrade = false,
-    UpgradePriority = "Balanced",
-    UpgradeMode = "Buy 1",
-    UpgradeDelay = 1.25,
-
-    WalkSpeedOverride = false,
-    WalkSpeed = 30,
-    JumpPowerOverride = false,
-    JumpPower = 70,
-    InfiniteJump = false,
-    Noclip = false,
-    AntiGuard = true,
-    AntiKnockback = true,
-
-    AutoClaimAll = false,
-    AutoSpinWheel = false,
+    AutoPull = false,
+    EggChoice = "Any",
+    SmartStrengthTarget = true,
+    AutoPlace = true,
+    AutoOpen = true,
     AutoEquipBest = false,
-    AutoClaimFuse = false,
-    TeleportZone = "Forest",
 
-    AntiAFK = true,
+    AutoCollect = false,
+    AutoUpgradePets = false,
+    AutoSell = false,
+    SellMaxRarity = "Common",
+
+    AutoRebirth = false,
+    StopRebirth = 0,
+    AutoCarry = false,
+    AutoDaily = false,
+    AutoGroup = false,
+    AutoClaimIndex = false,
+    AutoBuyGear = false,
+    AutoBestWorld = false,
+
+    MovementMode = "Tween",
+    TweenSpeed = 300,
+    WalkTimeout = 12,
+
     WhiteScreen = false,
-    UltraPerformance = false,
-    AutoReconnect = true,
+    AntiMonsterHit = true,
+    AutoRejoin = false,
+    RejoinMinutes = 17,
 }
-local Defaults = {}
-for k, v in pairs(Config) do
-    if type(v) == "table" then
-        Defaults[k] = table.clone(v)
-    else
-        Defaults[k] = v
-    end
-end
+
+local defaults = {}
+for k,v in pairs(Config) do defaults[k] = v end
 
 local CONFIG_DIR = "AliceHUB"
-local CONFIG_FILE = CONFIG_DIR .. "/StealAChicken.json"
+local CONFIG_FILE = CONFIG_DIR .. "/PullAnEgg.json"
 local saveQueued = false
 
-local function ensureConfigFolder()
-    if type(makefolder) ~= "function" then return end
-    pcall(function()
-        if type(isfolder) ~= "function" or not isfolder(CONFIG_DIR) then makefolder(CONFIG_DIR) end
-    end)
-end
-
-local function readConfig()
-    if not (type(isfile) == "function" and type(readfile) == "function") then return nil end
-    local okExists, exists = pcall(isfile, CONFIG_FILE)
-    if not okExists or not exists then return nil end
-    local okRead, raw = pcall(readfile, CONFIG_FILE)
-    if not okRead or type(raw) ~= "string" then return nil end
-    local okDecode, data = pcall(HttpService.JSONDecode, HttpService, raw)
-    if okDecode and type(data) == "table" then return data end
-    return nil
-end
-
-local function applyLoadedConfig(data)
-    if type(data) ~= "table" then return false end
-    for k, v in pairs(data) do
-        if Defaults[k] ~= nil then Config[k] = v end
-    end
-    return true
-end
-
 local function loadConfig()
-    local data = readConfig()
-    return data and applyLoadedConfig(data) or false
+    if not (type(isfile) == "function" and type(readfile) == "function") then return end
+    local okE, exists = pcall(isfile, CONFIG_FILE)
+    if not okE or not exists then return end
+    local okR, raw = pcall(readfile, CONFIG_FILE)
+    if not okR or type(raw) ~= "string" then return end
+    local okD, data = pcall(HttpService.JSONDecode, HttpService, raw)
+    if not okD or type(data) ~= "table" then return end
+    for k,v in pairs(data) do
+        if defaults[k] ~= nil then Config[k] = v end
+    end
 end
 
 local function saveConfig()
     if type(writefile) ~= "function" then return false end
-    ensureConfigFolder()
-    local okEncode, encoded = pcall(HttpService.JSONEncode, HttpService, Config)
-    if not okEncode then return false end
+    pcall(function()
+        if type(makefolder) == "function" then
+            if type(isfolder) ~= "function" or not isfolder(CONFIG_DIR) then
+                makefolder(CONFIG_DIR)
+            end
+        end
+    end)
+    local okE, encoded = pcall(HttpService.JSONEncode, HttpService, Config)
+    if not okE then return false end
     return pcall(writefile, CONFIG_FILE, encoded)
 end
 
 local function queueSave()
     if saveQueued then return end
     saveQueued = true
-    task.delay(0.5, function()
+    task.delay(0.55, function()
         saveQueued = false
         saveConfig()
     end)
@@ -1376,1754 +1222,1704 @@ end
 
 loadConfig()
 
--- Game modules.
-local Remotes = nil
-local ChickenUT = nil
-local EggUT = nil
-local BackpackUT = nil
-local NestUT = nil
-local PenUT = nil
-local BaseUT = nil
-local RaritiesIF = nil
-local ZonesIF = nil
-local CodesIF = nil
-local PlayRewardsIF = nil
-local StoreBackpackSelectors = nil
-local StoreBaseSelectors = nil
-local SessionBackpackSelectors = nil
-local SessionBaseSelectors = nil
-local SessionPlayerSelectors = nil
-local PenEggSelectors = nil
-local Producer = nil
+local State = {
+    Running = true,
+    Ready = false,
+    InitStatus = "Waiting for game client...",
+    Pulling = false,
+    Moving = false,
+    Action = "Loading...",
+    LastEgg = "-",
+    LastEggRequirement = "-",
+    BestWorld = "-",
+    Holding = false,
+    HeldUID = nil,
+    LastError = "-",
+    SessionStart = os.clock(),
+}
 
-local RarityNames = {}
-local RarityOrderByName = {}
-local ZoneKeys = {}
-local ZoneDisplay = {}
-local ZoneKeyByDisplay = {}
-local CodeKeys = {"release", "september", "crystal", "relax"}
-local PlayRewardKeys = {}
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local function initBackend()
-    local shared = ReplicatedStorage:FindFirstChild("shared")
-    if not shared then return false, "ReplicatedStorage.shared not found" end
+-- V3 backend:
+-- Do NOT depend on the game's LocalScript _G. Exploit/executor _G may be isolated.
+-- We talk directly to SharedModules.Network.Remotes and locate the player's plot.
+local Lib = {Database = {}}
+local Database = {}
+local RemoteFolder = nil
+local DataGetRemote = nil
+local MyPlot, Base, Live, WorldFriends, PlayerFriendsRoot, MyPlayerFriends
+local R = {}
 
-    Remotes = safeRequire(getPath(shared, "remotes"))
-    ChickenUT = safeRequire(getPath(shared, "utils", "chickenUT"))
-    EggUT = safeRequire(getPath(shared, "utils", "eggUT"))
-    BackpackUT = safeRequire(getPath(shared, "utils", "backpackUT"))
-    NestUT = safeRequire(getPath(shared, "utils", "nestUT"))
-    PenUT = safeRequire(getPath(shared, "utils", "penUT"))
-    BaseUT = safeRequire(getPath(shared, "utils", "baseUT"))
-    RaritiesIF = safeRequire(getPath(shared, "gameData", "chickens", "raritiesIF"))
-    ZonesIF = safeRequire(getPath(shared, "gameData", "zones", "zonesIF"))
-    CodesIF = safeRequire(getPath(shared, "gameData", "rewards", "codesIF"))
-    PlayRewardsIF = safeRequire(getPath(shared, "gameData", "rewards", "playRewardsIF"))
+local DataCache = nil
+local DataCacheAt = 0
 
-    StoreBackpackSelectors = safeRequire(getPath(shared, "state", "selectors", "storeSelectors", "backpackSelectors"))
-    StoreBaseSelectors = safeRequire(getPath(shared, "state", "selectors", "storeSelectors", "baseSelectors"))
-    SessionBackpackSelectors = safeRequire(getPath(shared, "state", "selectors", "sessionSelectors", "backpackSelectors"))
-    SessionBaseSelectors = safeRequire(getPath(shared, "state", "selectors", "sessionSelectors", "baseSelectors"))
-    SessionPlayerSelectors = safeRequire(getPath(shared, "state", "selectors", "sessionSelectors", "playerSelectors"))
-    PenEggSelectors = safeRequire(getPath(shared, "state", "selectors", "sessionSelectors", "penEggSelectors"))
-
-    local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts") or LocalPlayer:WaitForChild("PlayerScripts", 10)
-    local producerModule = playerScripts and findModule(playerScripts, "producer")
-    Producer = safeRequire(producerModule)
-
-    if not Remotes then return false, "shared.remotes failed to load" end
-    if not ChickenUT or not EggUT or not BackpackUT or not NestUT then
-        return false, "required chicken/egg/nest utils failed to load"
-    end
-
-    table.clear(RarityNames)
-    table.clear(RarityOrderByName)
-    local rarityRows = {}
-    if type(RaritiesIF) == "table" then
-        for _, rarity in pairs(RaritiesIF) do
-            if type(rarity) == "table" and type(rarity.getName) == "function" then
-                local okName, name = pcall(rarity.getName, rarity)
-                local okOrder, order = pcall(rarity.getOrder, rarity)
-                if okName and type(name) == "string" then
-                    rarityRows[#rarityRows + 1] = {name = name, order = okOrder and tonumber(order) or 0}
-                end
-            end
-        end
-    end
-    table.sort(rarityRows, function(a, b) return a.order < b.order end)
-    for _, row in ipairs(rarityRows) do
-        RarityNames[#RarityNames + 1] = row.name
-        RarityOrderByName[row.name] = row.order
-    end
-
-    if #RarityNames == 0 then
-        RarityNames = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Stellar", "Secret", "Celestial", "Divine", "Radiant", "Prismatic", "Rainbow", "Limited"}
-        for i, name in ipairs(RarityNames) do RarityOrderByName[name] = i end
-    end
-
-    table.clear(ZoneKeys)
-    table.clear(ZoneDisplay)
-    table.clear(ZoneKeyByDisplay)
-    if type(ZonesIF) == "table" then
-        for key in pairs(ZonesIF) do
-            if type(key) == "string" then ZoneKeys[#ZoneKeys + 1] = key end
-        end
-    end
-    table.sort(ZoneKeys)
-    local preferred = {"forest", "lake", "jungle", "desert", "snow", "volcano", "beach", "abyss", "cosmic", "crystal"}
-    local present = {}
-    for _, k in ipairs(ZoneKeys) do present[k] = true end
-    local ordered = {}
-    for _, k in ipairs(preferred) do if present[k] then ordered[#ordered + 1] = k; present[k] = nil end end
-    for k in pairs(present) do ordered[#ordered + 1] = k end
-    ZoneKeys = ordered
-    for _, key in ipairs(ZoneKeys) do
-        local display = key:sub(1,1):upper() .. key:sub(2)
-        ZoneDisplay[#ZoneDisplay + 1] = display
-        ZoneKeyByDisplay[display] = key
-    end
-
-    if type(CodesIF) == "table" and type(CodesIF.codes) == "table" then
-        table.clear(CodeKeys)
-        for key in pairs(CodesIF.codes) do CodeKeys[#CodeKeys + 1] = tostring(key) end
-        table.sort(CodeKeys)
-    end
-
-    table.clear(PlayRewardKeys)
-    if type(PlayRewardsIF) == "table" then
-        local source = PlayRewardsIF.rewards or PlayRewardsIF
-        if type(source) == "table" then
-            for key in pairs(source) do
-                if tostring(key):match("^reward%d+$") then PlayRewardKeys[#PlayRewardKeys + 1] = tostring(key) end
-            end
-        end
-    end
-    if #PlayRewardKeys == 0 then
-        for i = 1, 15 do PlayRewardKeys[#PlayRewardKeys + 1] = "reward" .. i end
-    end
-    table.sort(PlayRewardKeys, function(a,b)
-        return (tonumber(a:match("%d+")) or 0) < (tonumber(b:match("%d+")) or 0)
+local function notify(title, body, dur)
+    pcall(function()
+        Library:Notify({
+            Title = title or "AliceHUB",
+            Description = tostring(body or ""),
+            Time = dur or 4,
+        })
     end)
-
-    return true
 end
 
-local function character()
-    return LocalPlayer.Character
+local function setAction(text)
+    State.Action = tostring(text or "Idle")
 end
 
-local function rootPart()
-    local char = character()
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function humanoid()
-    local char = character()
-    return char and char:FindFirstChildOfClass("Humanoid")
-end
-
-local function getProducerState(selector)
-    if not Producer or type(Producer.getState) ~= "function" or not selector then return nil end
-    local ok, value = pcall(Producer.getState, Producer, selector)
-    if ok then return value end
+local function findMyPlot()
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+    for _, plot in ipairs(plots:GetChildren()) do
+        local owner = plot:FindFirstChild("owner")
+        if owner then
+            local ok, value = pcall(function() return owner.Value end)
+            if ok and tostring(value) == LocalPlayer.Name then
+                return plot
+            end
+        end
+    end
     return nil
 end
 
-local function selectorCall(module, name, ...)
-    if type(module) ~= "table" or type(module[name]) ~= "function" then return nil end
+local function findNetworkModule()
+    local shared = ReplicatedStorage:FindFirstChild("SharedModules")
+    if not shared then return nil end
+
+    local direct = shared:FindFirstChild("Network")
+    if direct and direct:IsA("ModuleScript") then return direct end
+
+    for _, obj in ipairs(shared:GetDescendants()) do
+        if obj:IsA("ModuleScript") and obj.Name == "Network" then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function findDatabaseModule()
+    local shared = ReplicatedStorage:FindFirstChild("SharedModules")
+    if not shared then return nil end
+
+    local direct = shared:FindFirstChild("Database")
+    if direct and direct:IsA("ModuleScript") then return direct end
+
+    for _, obj in ipairs(shared:GetDescendants()) do
+        if obj:IsA("ModuleScript") and obj.Name == "Database" then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function recoverDatabaseFromGC()
+    if type(getgc) ~= "function" then return nil end
+    local ok, objects = pcall(getgc, true)
+    if not ok or type(objects) ~= "table" then return nil end
+
+    for _, obj in ipairs(objects) do
+        if type(obj) == "table" then
+            local okProbe, friends, dumbells, rebirths = pcall(function()
+                return rawget(obj, "Friends"), rawget(obj, "Dumbells"), rawget(obj, "Rebirths")
+            end)
+            if okProbe and type(friends) == "table"
+                and type(dumbells) == "table"
+                and type(rebirths) == "table" then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+local function getData(force)
+    if not DataGetRemote then return DataCache end
+
+    local now = os.clock()
+    if not force and DataCache and now - DataCacheAt < 0.55 then
+        return DataCache
+    end
+
+    local ok, result = pcall(function()
+        return DataGetRemote:InvokeServer(LocalPlayer)
+    end)
+
+    if ok and type(result) == "table" then
+        DataCache = result
+        DataCacheAt = now
+    elseif not ok then
+        State.LastError = "Data:Get " .. tostring(result)
+    end
+
+    return DataCache
+end
+
+local function makeRemote(name, kind)
+    if not RemoteFolder then return nil end
+    local remote = RemoteFolder:FindFirstChild(name)
+    if remote then return remote end
+
+    local ok, found = pcall(function()
+        return RemoteFolder:WaitForChild(name, 3)
+    end)
+    return ok and found or nil
+end
+
+local function remoteFire(remote, ...)
+    if not remote then return false, "remote unavailable" end
     local args = table.pack(...)
-    local ok, selector = pcall(function()
-        return module[name](table.unpack(args, 1, args.n))
+
+    local ok, result = pcall(function()
+        if remote:IsA("RemoteEvent") then
+            remote:FireServer(table.unpack(args, 1, args.n))
+            return true
+        elseif remote:IsA("RemoteFunction") then
+            return remote:InvokeServer(table.unpack(args, 1, args.n))
+        end
+        error("Unsupported remote class: " .. tostring(remote.ClassName))
     end)
-    return ok and selector or nil
-end
 
-local function getBackpackItems()
-    local selector = selectorCall(StoreBackpackSelectors, "selectBackpackItems", LocalPlayer.Name)
-    local value = getProducerState(selector)
-    return type(value) == "table" and value or {}
-end
-
-local function getHoldingItem()
-    local selector = selectorCall(SessionBackpackSelectors, "selectHoldingItem", LocalPlayer.Name)
-    return getProducerState(selector)
-end
-
--- Raw holding id is more reliable than selectHoldingItem during the few frames
--- after a stolen chicken transitions from yeetReward into the backpack/hotbar.
--- selectHoldingItem can temporarily be nil until the backpack item list catches up.
-local function getHoldingId()
-    local selector = selectorCall(SessionBackpackSelectors, "selectHolding", LocalPlayer.Name)
-    local value = getProducerState(selector)
-    if type(value) == "string" and value ~= "" then return value end
-
-    local held = getHoldingItem()
-    if type(held) == "string" and held ~= "" then return held end
-    if type(held) == "table" then
-        if BackpackUT and type(BackpackUT.getItemId) == "function" then
-            local ok, id = pcall(BackpackUT.getItemId, held)
-            if ok and type(id) == "string" and id ~= "" then return id end
-        end
-        local id = held.id or held.uuid or held.itemId or held.key
-        if type(id) == "string" and id ~= "" then return id end
+    if not ok then
+        State.LastError = tostring(result)
     end
-    return nil
+    return ok, result
 end
 
-local function getBaseLevel()
-    local selector = selectorCall(StoreBaseSelectors, "selectBaseLevel", LocalPlayer.Name)
-    return tonumber(getProducerState(selector))
+local function requireReady()
+    if State.Ready then return true end
+    notify("AliceHUB", State.InitStatus or "Game client belum siap.", 4)
+    return false
 end
 
-local function getBaseChickens()
-    local selector = selectorCall(StoreBaseSelectors, "selectBaseChickens", LocalPlayer.Name)
-    local value = getProducerState(selector)
-    return type(value) == "table" and value or {}
-end
+local rarityRank = {
+    -- Exact order from the game's SharedVariables.RarityOrders dump.
+    Common=1, Rare=2, Epic=3, Legendary=4, Mythic=5, Secret=6,
+    ["Brainrot God"]=7, OG=9, Divine=10, Transcendent=11,
+    Celestial=12, Ancient=13, Cosmic=14, Atlantian=15,
+    ["Sci Fi"]=16, Exclusive=17,
+}
 
-local function getPenCapacity()
-    local level = getBaseLevel()
-    if level == nil or not BaseUT or type(BaseUT.getMaxChickens) ~= "function" then
-        return nil, nil
+-- Exact pull gates recovered from SharedVariables.RARITY_PULL_STRENGTHS.
+-- Best Egg By Strength now uses these game values instead of BasePart.AssemblyMass.
+local rarityMinStrength = {
+    Common=0,
+    Rare=500,
+    Epic=9500,
+    Legendary=45000,
+    Mythic=290000,
+    Secret=2450000,
+    ["Brainrot God"]=9500000,
+    OG=48500000,
+    Divine=420000000,
+    Transcendent=4500000000,
+    Ancient=17500000000,
+    Celestial=95000000000,
+    Atlantian=345000000000,
+    Cosmic=490000000000,
+    ["Sci Fi"]=490000000000,
+    Exclusive=5000000,
+}
+
+local eggChoices = {"Any"}
+local function rebuildEggChoices()
+    local newList = {"Any"}
+    if not (Lib and type(Lib.Database) == "table" and type(Lib.Database.Friends) == "table") then
+        eggChoices = newList
+        return newList
     end
-    local ok, max = pcall(BaseUT.getMaxChickens, level)
-    if not ok or tonumber(max) == nil then return nil, nil end
-    return #getBaseChickens(), tonumber(max)
-end
-
-local function isPenFull()
-    local count, max = getPenCapacity()
-    return count ~= nil and max ~= nil and max > 0 and count >= max, count, max
-end
-
-local function tryMakePenSpace()
-    local full, count, max = isPenFull()
-    if not full then return true, count, max end
-
-    if Config.AutoBaseUpgrade and Remotes and Remotes.data and Remotes.data.base and Remotes.data.base.upgradeBase then
-        local now = os.clock()
-        if now - (Runtime.lastPenUpgradeTry or 0) >= math.max(0.8, tonumber(Config.UpgradeDelay) or 1.25) then
-            Runtime.lastPenUpgradeTry = now
-            setAction(string.format("Pen full %s/%s - upgrading base", tostring(count or "?"), tostring(max or "?")))
-            remoteFire(Remotes.data.base.upgradeBase)
-            task.wait(0.7)
-            full, count, max = isPenFull()
-            if not full then return true, count, max end
-        end
-    end
-
-    setAction(string.format("Pen full %s/%s", tostring(count or "?"), tostring(max or "?")))
-    return false, count, max
-end
-
--- Stolen nest chickens are NOT represented by selectHoldingItem while the chase is active.
--- The game stores that carry in playerSession.yeetReward; this is the same state used by
--- the native RUN/DROP UI and guard systems.
-local function getYeetReward()
-    local selector = selectorCall(SessionPlayerSelectors, "selectPlayerYeetReward", LocalPlayer.Name)
-    return getProducerState(selector)
-end
-
-local function isNestCarry()
-    local reward = getYeetReward()
-    if type(reward) ~= "table" then return false end
-    if reward.source == "nest" then return true end
-    -- Insane steals can use the same yeet payload with an insaneZone marker.
-    if reward.insaneZone ~= nil then return true end
-    return reward.isChasing == true and reward.zone ~= nil
-end
-
-local function isHolding()
-    return isNestCarry() or getHoldingId() ~= nil or getHoldingItem() ~= nil
-end
-
-local function waitForCarry(timeout)
-    local deadline = os.clock() + math.max(0.05, tonumber(timeout) or 1)
-    repeat
-        if isHolding() then return true end
-        RunService.Heartbeat:Wait()
-    until not Runtime.alive or os.clock() >= deadline
-    return isHolding()
-end
-
-local function getPlayerBaseIndex()
-    local selector = selectorCall(SessionBaseSelectors, "selectPlayerBase", LocalPlayer.Name)
-    return getProducerState(selector)
-end
-
-local function getOwnBase()
-    local targetIndex = getPlayerBaseIndex()
-    local bases = CollectionService:GetTagged("Base")
-    if targetIndex ~= nil then
-        for _, base in ipairs(bases) do
-            if base:GetAttribute("index") == targetIndex or tostring(base:GetAttribute("index")) == tostring(targetIndex) then
-                return base
+    local found = {}
+    local defs = {}
+    for id, def in pairs(Lib.Database.Friends) do
+        if type(def) == "table" and def.Type == "Lucky Block" and def.Name then
+            local name = tostring(def.Name)
+            if not found[name] then
+                found[name] = true
+                defs[#defs+1] = {
+                    name=name,
+                    rarity=tostring(def.Rarity or "Common"),
+                    hatch=tonumber(def.HatchTime) or 0,
+                }
             end
         end
     end
-    for _, base in ipairs(bases) do
-        for _, attr in ipairs({"player", "playerName", "owner", "ownerName"}) do
-            local value = base:GetAttribute(attr)
-            if tostring(value or ""):lower() == LocalPlayer.Name:lower() then return base end
-        end
-    end
-    return nil
+    table.sort(defs, function(a,b)
+        local ar, br = rarityRank[a.rarity] or 0, rarityRank[b.rarity] or 0
+        if ar ~= br then return ar < br end
+        if a.hatch ~= b.hatch then return a.hatch < b.hatch end
+        return a.name < b.name
+    end)
+    for _, item in ipairs(defs) do newList[#newList+1] = item.name end
+    eggChoices = newList
+    return newList
 end
 
-local function getBaseTargetCFrame()
-    local base = getOwnBase()
-    if not base then return nil, nil end
-    if PenUT and type(PenUT.getBounds) == "function" then
-        local ok, cf = pcall(PenUT.getBounds, base)
-        if ok and typeof(cf) == "CFrame" then
-            local floorY = nil
-            if type(PenUT.getFloorY) == "function" then
-                local okFloor, value = pcall(PenUT.getFloorY, base, cf.Position)
-                if okFloor and tonumber(value) then floorY = tonumber(value) end
-            end
-            local y = (floorY or cf.Position.Y) + 3
-            local rotation = cf - cf.Position
-            return CFrame.new(cf.Position.X, y, cf.Position.Z) * rotation, base
-        end
-    end
-    if base:IsA("Model") then return base:GetPivot() * CFrame.new(0, 3, 0), base end
-    if base:IsA("BasePart") then return base.CFrame * CFrame.new(0, 3, 0), base end
-    return nil, base
+local activeTween
+local moveSerial = 0
+
+local function rootHumanoid()
+    local char = LocalPlayer.Character
+    if not char then return nil,nil end
+    return char:FindFirstChild("HumanoidRootPart"), char:FindFirstChildOfClass("Humanoid")
 end
 
-local function cancelTween()
-    Runtime.moveSerial = (Runtime.moveSerial or 0) + 1
-    if Runtime.activeTween then pcall(function() Runtime.activeTween:Cancel() end) end
-    Runtime.activeTween = nil
-    Runtime.moving = false
-end
+local function moveToPosition(position)
+    if not requireReady() then return false end
+    local hrp, hum = rootHumanoid()
+    if not hrp then return false end
 
-local function stopCharacterMotion()
-    local root = rootPart()
-    local hum = humanoid()
-    if hum then pcall(function() hum:Move(Vector3.zero, false) end) end
-    if root then
+    moveSerial += 1
+    local serial = moveSerial
+    State.Moving = true
+
+    if activeTween then pcall(function() activeTween:Cancel() end) end
+    activeTween = nil
+
+    local dest = position + Vector3.new(0,3,0)
+
+    if Config.MovementMode == "TP" then
         pcall(function()
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
+            hrp.CFrame = CFrame.new(dest)
+            hrp.AssemblyLinearVelocity = Vector3.zero
         end)
-    end
-end
-
-local function pivotCharacter(cf, stabilizeFrames)
-    local char = character()
-    if not char or typeof(cf) ~= "CFrame" then return false end
-    cancelTween()
-    local frames = math.clamp(tonumber(stabilizeFrames) or 1, 1, 5)
-    for _ = 1, frames do
-        if not Runtime.alive or not char.Parent then return false end
-        pcall(function()
-            char:PivotTo(cf)
-            local root = rootPart()
-            if root then
-                root.CFrame = cf
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
-        stopCharacterMotion()
-        RunService.Heartbeat:Wait()
-    end
-    return true
-end
-
--- Manual PivotTo tween is intentionally used instead of only TweenService on HRP.
--- The game's own character/chase controller can overwrite a normal HRP tween; driving
--- the character pivot every frame keeps Tween mode smooth and deterministic.
-local function tweenCharacter(cf, speed)
-    local root = rootPart()
-    local char = character()
-    if not root or not char or typeof(cf) ~= "CFrame" then return false end
-
-    cancelTween()
-    Runtime.moveSerial = (Runtime.moveSerial or 0) + 1
-    local serial = Runtime.moveSerial
-    Runtime.moving = true
-
-    local startCF = root.CFrame
-    local distance = (startCF.Position - cf.Position).Magnitude
-    local duration = math.clamp(distance / math.max(20, tonumber(speed) or 350), 0.04, 10)
-    local started = os.clock()
-
-    while Runtime.alive and Runtime.moveSerial == serial do
-        local alpha = math.clamp((os.clock() - started) / duration, 0, 1)
-        local nowCF = startCF:Lerp(cf, alpha)
-        pcall(function()
-            char:PivotTo(nowCF)
-            local currentRoot = rootPart()
-            if currentRoot then
-                currentRoot.AssemblyLinearVelocity = Vector3.zero
-                currentRoot.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
-        local hum = humanoid()
-        if hum then pcall(function() hum:Move(Vector3.zero, false) end) end
-        if alpha >= 1 then break end
-        RunService.Heartbeat:Wait()
-    end
-
-    if Runtime.moveSerial == serial and Runtime.alive then
-        pcall(function() char:PivotTo(cf) end)
-        stopCharacterMotion()
-    end
-    Runtime.moving = false
-    local finalRoot = rootPart()
-    return finalRoot ~= nil and (finalRoot.Position - cf.Position).Magnitude <= 8
-end
-
-local function moveToPosition(position, modeOverride)
-    local root = rootPart()
-    if not root or typeof(position) ~= "Vector3" then return false end
-    local mode = modeOverride or Config.MovementMode
-    local horizontal = Vector3.new(root.Position.X - position.X, 0, root.Position.Z - position.Z)
-    local direction = horizontal.Magnitude > 0.05 and horizontal.Unit or Vector3.new(1,0,0)
-    local finalPos = position + direction * 3.5 + Vector3.new(0, 3, 0)
-    local finalCF = CFrame.lookAt(finalPos, Vector3.new(position.X, finalPos.Y, position.Z))
-
-    if mode == "Instant TP" then
-        return pivotCharacter(finalCF, 2)
-    elseif mode == "Tween" then
-        return tweenCharacter(finalCF, Config.TweenSpeed)
-    else
-        local distance = (root.Position - finalPos).Magnitude
-        if distance > 95 then
-            local stagePos = position + direction * 12 + Vector3.new(0, 3, 0)
-            pivotCharacter(CFrame.lookAt(stagePos, Vector3.new(position.X, stagePos.Y, position.Z)))
-            task.wait(0.05)
-        end
-        return tweenCharacter(finalCF, math.max(Config.TweenSpeed, 450))
-    end
-end
-
-local function moveToBase(forceInstant)
-    local cf, base = getBaseTargetCFrame()
-    if not cf then
-        remoteFire(Remotes and Remotes.game and Remotes.game.base and Remotes.game.base.teleportToBase)
-        task.wait(0.25)
-        cf, base = getBaseTargetCFrame()
-    end
-    if not cf then return false end
-    if forceInstant or Config.MovementMode == "Instant TP" then
-        pivotCharacter(cf, 3)
-    elseif Config.MovementMode == "Tween" then
-        tweenCharacter(cf, Config.TweenSpeed)
-    else
-        local root = rootPart()
-        if root and (root.Position - cf.Position).Magnitude > 95 then
-            -- Smart: snap most of the long trip, then visibly tween the final approach.
-            local nearCF = cf * CFrame.new(0, 0, 18)
-            pivotCharacter(nearCF, 2)
-            task.wait(0.03)
-        end
-        tweenCharacter(cf, math.max(Config.TweenSpeed, 450))
-    end
-    stopCharacterMotion()
-    return true, base
-end
-
-local function rarityInfo(chickenName, variant)
-    if not ChickenUT or type(ChickenUT.getChicken) ~= "function" or not chickenName then return "Unknown", 0, nil end
-    local okChicken, chicken = pcall(ChickenUT.getChicken, chickenName, variant or "normal")
-    if not okChicken or not chicken then return "Unknown", 0, nil end
-    local okRarity, rarity = pcall(function() return chicken:getRarity() end)
-    if not okRarity or not rarity then return "Unknown", 0, chicken end
-    local okName, name = pcall(function() return rarity:getName() end)
-    local okOrder, order = pcall(function() return rarity:getOrder() end)
-    return okName and tostring(name) or "Unknown", okOrder and tonumber(order) or 0, chicken
-end
-
-local function chickenValue(chickenName, variant, size)
-    if not ChickenUT then return 0 end
-    if type(ChickenUT.getPlacedValue) == "function" then
-        local ok, value = pcall(ChickenUT.getPlacedValue, {
-            name = chickenName,
-            variant = variant or "normal",
-            size = tonumber(size) or 1,
-        }, 1)
-        if ok and tonumber(value) then return tonumber(value) end
-    end
-    local _, _, chicken = rarityInfo(chickenName, variant)
-    if chicken and type(chicken.getSellValue) == "function" then
-        local ok, value = pcall(function() return chicken:getSellValue(tonumber(size) or 1) end)
-        if ok and tonumber(value) then return tonumber(value) end
-    end
-    return 0
-end
-
-local function selectedMapAllows(map, name)
-    if type(map) ~= "table" then return true end
-    local any = false
-    for _, enabled in pairs(map) do if enabled == true then any = true break end end
-    if not any then return true end
-    return map[name] == true
-end
-
-local function targetFromNest(nest)
-    if not nest or not nest:IsDescendantOf(workspace) then return nil end
-
-    -- Only an exact live Chicken/Egg child counts as an occupied nest. Attributes like
-    -- chickenName can stay stale after a steal, so they are never enough by themselves.
-    local liveSlot = nest:FindFirstChild("Chicken") or nest:FindFirstChild("Egg")
-    local consumed = Runtime.consumedNests[nest]
-
-    if not liveSlot or not (liveSlot:IsA("Model") or liveSlot:IsA("BasePart")) then
-        -- Important: remember that this consumed nest has genuinely become empty.
-        -- It remains blocked until a later scan sees a Chicken/Egg again.
-        if consumed then consumed.observedEmpty = true end
-        return nil
-    end
-
-    if consumed then
-        if consumed.observedEmpty then
-            -- The game has repopulated/reset this nest. A live payload appearing after an
-            -- observed empty state is a new spawn, even if the game reuses the same Instance.
-            Runtime.consumedNests[nest] = nil
-        else
-            -- We stole from this nest but have not yet observed it empty. Ignore any stale
-            -- payload that lingers for a few frames instead of chasing it again.
-            return nil
-        end
-    end
-
-    local chickenName = nest:GetAttribute("chickenName")
-    if type(chickenName) ~= "string" or chickenName == "" then return nil end
-    local variant = nest:GetAttribute("chickenVariant") or "normal"
-    local size = tonumber(nest:GetAttribute("chickenSize")) or 1
-    local zone = nil
-    if NestUT and type(NestUT.resolveZone) == "function" then
-        local ok, z = pcall(function() return NestUT.resolveZone(nest) end)
-        if ok then zone = z end
-    end
-    if type(zone) ~= "string" then return nil end
-    local origin = nil
-    if NestUT and type(NestUT.getNestOrigin) == "function" then
-        local ok, value = pcall(NestUT.getNestOrigin, nest)
-        if ok and typeof(value) == "Vector3" then origin = value end
-    end
-    if not origin then
-        if nest:IsA("Model") then origin = nest:GetPivot().Position
-        elseif nest:IsA("BasePart") then origin = nest.Position end
-    end
-    if not origin then return nil end
-    local rarityName, order = rarityInfo(chickenName, variant)
-    if not selectedMapAllows(Config.RarityFilter, rarityName) then return nil end
-    local value = chickenValue(chickenName, variant, size)
-    local root = rootPart()
-    return {
-        kind = "nest", instance = nest, name = chickenName, variant = variant,
-        size = size, zone = zone, position = origin,
-        rarity = rarityName, order = order, value = value,
-        distance = root and (root.Position - origin).Magnitude or math.huge,
-        key = NestUT and type(NestUT.nestKey) == "function" and NestUT.nestKey(zone, origin) or nil,
-        liveSlot = liveSlot,
-    }
-end
-
-Runtime.__rs_targetFromInsane = function(model)
-    if not Config.IncludeInsane or not model or not model:IsDescendantOf(workspace) then return nil end
-    local zone = model:GetAttribute("insaneZone")
-    local chickenName = model:GetAttribute("chickenName")
-    if type(zone) ~= "string" or type(chickenName) ~= "string" then return nil end
-    local variant = model:GetAttribute("chickenVariant") or "normal"
-    local size = tonumber(model:GetAttribute("chickenSize")) or 1
-    local origin = model:IsA("Model") and model:GetPivot().Position or (model:IsA("BasePart") and model.Position or nil)
-    if not origin then return nil end
-    local rarityName, order = rarityInfo(chickenName, variant)
-    if not selectedMapAllows(Config.RarityFilter, rarityName) then return nil end
-    local root = rootPart()
-    return {
-        kind = "insane", instance = model, name = chickenName, variant = variant,
-        size = size, zone = zone, position = origin,
-        rarity = rarityName, order = order, value = chickenValue(chickenName, variant, size),
-        distance = root and (root.Position - origin).Magnitude or math.huge,
-        key = nil,
-    }
-end
-
-Runtime.__rs_targetBetter = function(a, b)
-    if not b then return true end
-    if Config.TargetPriority == "Nearest" then
-        if a.distance ~= b.distance then return a.distance < b.distance end
-        return a.order > b.order
-    elseif Config.TargetPriority == "Highest Value" then
-        if a.value ~= b.value then return a.value > b.value end
-        if a.order ~= b.order then return a.order > b.order end
-        return a.distance < b.distance
-    else
-        if a.order ~= b.order then return a.order > b.order end
-        if a.value ~= b.value then return a.value > b.value end
-        return a.distance < b.distance
-    end
-end
-
-Runtime.__rs_findBestTarget = function()
-    local best = nil
-    for _, nest in ipairs(CollectionService:GetTagged("Nest")) do
-        local target = targetFromNest(nest)
-        if target and Runtime.__rs_targetBetter(target, best) then best = target end
-    end
-    if Config.IncludeInsane then
-        for _, egg in ipairs(CollectionService:GetTagged("InsaneEgg")) do
-            local target = Runtime.__rs_targetFromInsane(egg)
-            if target and Runtime.__rs_targetBetter(target, best) then best = target end
-        end
-    end
-    return best
-end
-
-Runtime.__rs_formatCompact = function(value)
-    value = tonumber(value) or 0
-    local abs = math.abs(value)
-    if abs >= 1e12 then return string.format("%.2fT", value/1e12) end
-    if abs >= 1e9 then return string.format("%.2fB", value/1e9) end
-    if abs >= 1e6 then return string.format("%.2fM", value/1e6) end
-    if abs >= 1e3 then return string.format("%.1fK", value/1e3) end
-    return tostring(math.floor(value + 0.5))
-end
-
-Runtime.__rs_waitForNestDeposit = function(timeout)
-    local deadline = os.clock() + math.max(0.15, tonumber(timeout) or 1.25)
-    while Runtime.alive and os.clock() < deadline do
-        if not isNestCarry() then return true end
-        local cf = getBaseTargetCFrame()
-        local root = rootPart()
-        if cf and root and (root.Position - cf.Position).Magnitude > 7 then
-            -- Hold the character inside the pen if the game nudges/rubberbands it.
-            pivotCharacter(cf, 1)
-        else
-            stopCharacterMotion()
-            RunService.Heartbeat:Wait()
-        end
-    end
-    return not isNestCarry()
-end
-
--- After a stolen chicken reaches base, the game's chase/yeet state can end while
--- the chicken remains selected as the current holding item. Calling dropChicken at
--- that point tries to PLACE it into the pen and causes "Your pen is full" spam.
--- Store the held item back into backpack instead, so Auto Steal can continue even
--- when every pen slot is occupied.
-Runtime.__rs_heldItemId = function()
-    -- Prefer the raw session holding id. It remains available even when
-    -- selectHoldingItem has not rebuilt the full item table yet.
-    local rawId = getHoldingId()
-    if rawId ~= nil then return rawId end
-
-    local held = getHoldingItem()
-    if held == nil then return nil end
-    if type(held) == "string" then return held end
-    if type(held) ~= "table" then return nil end
-
-    if BackpackUT and type(BackpackUT.getItemId) == "function" then
-        local ok, id = pcall(BackpackUT.getItemId, held)
-        if ok and id ~= nil then return id end
-    end
-
-    return held.id or held.uuid or held.itemId or held.key
-end
-
-Runtime.__rs_storeHeldChicken = function(timeout)
-    local deadline = os.clock() + math.max(0.35, tonumber(timeout) or 1.4)
-    local backpackRemotes = Remotes and Remotes.data and Remotes.data.backpack
-    local storeRemote = backpackRemotes and backpackRemotes.storeItem
-    if not storeRemote then return false end
-
-    while Runtime.alive and os.clock() < deadline do
-        local id = Runtime.__rs_heldItemId()
-        if id == nil then return true end
-
-        setAction("Storing held chicken")
-
-        -- The game's own backpack UI calls storeItem:request(itemId).
-        -- V1.7 incorrectly used :fire(), so the server never cleared holding.
-        awaitRemoteRequest(storeRemote, 0.9, id)
-
-        local clearDeadline = math.min(deadline, os.clock() + 0.35)
-        while Runtime.alive and os.clock() < clearDeadline do
-            if getHoldingId() == nil then return true end
-            RunService.Heartbeat:Wait()
-        end
-
-        -- Retry with the freshest holding id in case the stolen chicken changed
-        -- from the chase payload into a backpack entry one frame later.
-        task.wait(0.06)
-    end
-
-    return getHoldingId() == nil
-end
-
-Runtime.__rs_dropAtBase = function(forceInstant)
-    if not Remotes then return false end
-    local okMove, base = moveToBase(forceInstant)
-    if not okMove then return false end
-
-    task.wait(math.max(0, tonumber(Config.ReturnDelay) or 0.15))
-    local root = rootPart()
-    if base and PenUT and type(PenUT.isInside) == "function" and root then
-        local okInside, inside = pcall(PenUT.isInside, base, root.Position)
-        if okInside and not inside then
-            local cf = getBaseTargetCFrame()
-            if cf then pivotCharacter(cf, 2) end
-        end
-    end
-
-    -- First finish the stolen-nest chase by standing inside our base/pen.
-    if isNestCarry() then
-        setAction("Depositing chicken")
-        local deposited = Runtime.__rs_waitForNestDeposit(1.4)
-        if not deposited then
-            local cf = getBaseTargetCFrame()
-            if cf then pivotCharacter(cf, 3) end
-            deposited = Runtime.__rs_waitForNestDeposit(0.65)
-        end
-
-        -- Important: after deposit, the stolen chicken may become a held backpack
-        -- item (especially when pen is full). Stash it instead of trying dropChicken.
-        task.wait(0.12)
-        local stored = Runtime.__rs_storeHeldChicken(1.4)
-        return (deposited or not isNestCarry()) and stored
-    end
-
-    -- If a stolen chicken already transitioned from yeetReward -> holding before this
-    -- function entered, just put it in the backpack. Do NOT call base.dropChicken.
-    if getHoldingId() ~= nil or getHoldingItem() ~= nil then
-        Runtime.__rs_storeHeldChicken(1.4)
-    end
-    return getHoldingId() == nil
-end
-
-Runtime.__rs_holdAtTarget = function(target, seconds)
-    local duration = math.max(0, tonumber(seconds) or 0)
-    if duration <= 0 then return true end
-    local deadline = os.clock() + duration
-    while Runtime.alive and os.clock() < deadline do
-        local root = rootPart()
-        if not root then return false end
-        if (root.Position - target.position).Magnitude > 8 then
-            moveToPosition(target.position, "Instant TP")
-        else
-            stopCharacterMotion()
-            RunService.Heartbeat:Wait()
-        end
-    end
-    return Runtime.alive
-end
-
-Runtime.__rs_settleInsideBase = function(seconds)
-    local deadline = os.clock() + math.max(0.1, tonumber(seconds) or 0.65)
-    while Runtime.alive and os.clock() < deadline do
-        local cf = getBaseTargetCFrame()
-        local root = rootPart()
-        if not cf or not root then break end
-        if (root.Position - cf.Position).Magnitude > 7 then
-            pivotCharacter(cf, 2)
-        else
-            stopCharacterMotion()
-            RunService.Heartbeat:Wait()
-        end
-    end
-end
-
--- Remote promise/state propagation is not equally fast on every steal. A steal is also
--- considered successful when the exact chicken/egg instance we targeted leaves its nest.
--- This is especially important from cycle #2 onward, where the visual steal can complete
--- before stealEgg's promise/selectPlayerYeetReward is visible to AliceHUB.
-Runtime.__rs_targetPayloadGone = function(target)
-    if not target or target.kind ~= "nest" or not target.instance then return false end
-    if not target.instance:IsDescendantOf(workspace) then return true end
-
-    local original = target.liveSlot
-    if original == nil or original.Parent == nil or not original:IsDescendantOf(target.instance) then
+        task.wait(0.1)
+        State.Moving = false
         return true
     end
 
-    local current = target.instance:FindFirstChild("Chicken") or target.instance:FindFirstChild("Egg")
-    return current == nil or current ~= original
-end
-
-Runtime.__rs_waitForTargetPayloadGone = function(target, timeout)
-    if not target or target.kind ~= "nest" then return false end
-    local deadline = os.clock() + math.max(0.05, tonumber(timeout) or 0.9)
-    repeat
-        if Runtime.__rs_targetPayloadGone(target) then return true end
-        RunService.Heartbeat:Wait()
-    until not Runtime.alive or os.clock() >= deadline
-    return Runtime.__rs_targetPayloadGone(target)
-end
-
-Runtime.__rs_stealTarget = function(target)
-    if Runtime.stealing or not target or not Remotes then return false end
-    Runtime.stealing = true
-    Runtime.lastTarget = target
-    Runtime.lastNestKey = target.key
-    Runtime.target = string.format("%s | %s | %s", target.name, target.rarity, Runtime.__rs_formatCompact(target.value))
-
-    setAction("Moving to " .. tostring(target.name))
-
-    local moved = moveToPosition(target.position)
-    if not moved then
-        Runtime.stealing = false
-        return false
-    end
-
-    -- Instant TP needs time for the new position to replicate before the server validates
-    -- steal distance. V1.2 waited mostly AFTER the steal request, which was too late.
-    if Config.MovementMode == "Instant TP" then
-        setAction("Waiting at " .. tostring(target.name))
-        Runtime.__rs_holdAtTarget(target, math.max(0.30, tonumber(Config.StealDelay) or 0.65))
-    else
-        task.wait(0.04)
-    end
-
-    setAction("Stealing " .. tostring(target.name))
-    local requestDone, requestResult
-    if target.kind == "insane" then
-        requestDone, requestResult = awaitRemoteRequest(Remotes.game.nests.takeInsaneEgg, 1.5, target.zone)
-    else
-        requestDone, requestResult = awaitRemoteRequest(Remotes.game.nests.stealEgg, 1.5, target.zone, target.position)
-    end
-
-    local stealConfirmed = requestDone and requestResult == true
-
-    -- One retry for Instant only. If the first request was evaluated before the TP position
-    -- reached the server, stay at the nest a little longer and retry once.
-    if not stealConfirmed and Config.MovementMode == "Instant TP" and Runtime.alive then
-        setAction("Retrying " .. tostring(target.name))
-        Runtime.__rs_holdAtTarget(target, 0.28)
-        if target.kind == "insane" then
-            requestDone, requestResult = awaitRemoteRequest(Remotes.game.nests.takeInsaneEgg, 1.5, target.zone)
-        else
-            requestDone, requestResult = awaitRemoteRequest(Remotes.game.nests.stealEgg, 1.5, target.zone, target.position)
-        end
-        stealConfirmed = requestDone and requestResult == true
-    end
-
-    -- Cycle-safe confirmation: from the second steal onward the promise/selectors can be
-    -- late even though the chicken visibly left the nest. The disappearing target itself
-    -- is authoritative enough for movement: once it is gone, return to base immediately.
-    local payloadGone = false
-    if target.kind == "nest" then
-        payloadGone = Runtime.__rs_waitForTargetPayloadGone(target, stealConfirmed and 0.30 or 1.10)
-    end
-    local actionConfirmed = stealConfirmed or payloadGone
-
-    if actionConfirmed and target.instance and target.kind == "nest" then
-        -- No timer here. This nest stays blocked until the scanner first observes it empty
-        -- and later sees a Chicken/Egg appear again during the game's own reset cycle.
-        Runtime.consumedNests[target.instance] = {
-            slot = target.liveSlot,
-            observedEmpty = payloadGone,
-            consumedAt = os.clock(),
-        }
-    end
-
-    local holding = false
-    if actionConfirmed then
-        setAction("Confirming chicken")
-        -- Do not make returning depend on this selector. We only give state a chance to
-        -- catch up; actionConfirmed already proves the chicken was taken.
-        holding = waitForCarry(Config.MovementMode == "Instant TP" and 0.65 or 1.15)
-        if Config.MovementMode == "Instant TP" then task.wait(0.12) end
-    else
-        -- Even if both confirmations are late, allow a longer carry-state grace period.
-        holding = waitForCarry(1.0)
-    end
-
-    if Config.AutoRecover and not holding and not stealConfirmed and target.key then
-        setAction("Recovering chicken")
-        local recovered, recoverResult = awaitRemoteRequest(Remotes.game.nests.recoverEgg, 1.25, target.key)
-        if recovered and recoverResult == true then
-            holding = waitForCarry(0.8)
-        else
-            holding = waitForCarry(0.35)
-        end
-    end
-
-    -- A true steal response is enough to return. Waiting for the store selector was the
-    -- reason Instant could show RUN/DROP in-game yet remain at the nest in V1.2.
-    local canReturn = holding or actionConfirmed
-    if Config.AutoReturn and canReturn then
-        if Config.AutoDrop then
-            Runtime.__rs_dropAtBase(false)
-        else
-            setAction("Returning to base")
-            moveToBase(false)
-        end
-
-        -- Keep the character inside the pen briefly even when yeetReward is late/missing.
-        -- Reaching the pen is what deposits a stolen nest chicken.
-        if actionConfirmed then
-            Runtime.__rs_settleInsideBase(Config.MovementMode == "Instant TP" and 0.85 or 0.45)
-            if Config.AutoDrop and (getHoldingId() ~= nil or getHoldingItem() ~= nil) then
-                Runtime.__rs_storeHeldChicken(1.4)
+    if Config.MovementMode == "Walk" and hum then
+        hum:MoveTo(dest)
+        local deadline = os.clock() + math.max(3, tonumber(Config.WalkTimeout) or 12)
+        while State.Running and serial == moveSerial and os.clock() < deadline do
+            if not hrp.Parent then break end
+            if (hrp.Position - dest).Magnitude <= 5 then
+                State.Moving = false
+                return true
             end
+            task.wait(0.1)
+        end
+        State.Moving = false
+        return hrp.Parent and (hrp.Position-dest).Magnitude <= 7
+    end
+
+    local speed = math.max(30, tonumber(Config.TweenSpeed) or 300)
+    local duration = math.clamp((hrp.Position-dest).Magnitude / speed, 0.05, 15)
+    activeTween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+        CFrame = CFrame.new(dest)
+    })
+    activeTween:Play()
+
+    local deadline = os.clock() + duration + 1.5
+    while State.Running and serial == moveSerial and os.clock() < deadline do
+        if (hrp.Position-dest).Magnitude <= 5 then break end
+        task.wait(0.05)
+    end
+    pcall(function() activeTween:Cancel() end)
+    activeTween = nil
+    State.Moving = false
+    return hrp.Parent and (hrp.Position-dest).Magnitude <= 8
+end
+
+local function getEggDefinition(model)
+    if not model then return nil end
+    local friends = Lib and Lib.Database and Lib.Database.Friends
+    if type(friends) ~= "table" then return nil end
+
+    local id = model:GetAttribute("ID")
+    if id ~= nil then
+        local def = friends[id] or friends[tostring(id)] or friends[tonumber(id)]
+        if type(def) == "table" then return def end
+    end
+
+    -- Fallback for executors/dumps where the ID attribute is not visible yet.
+    for _, def in pairs(friends) do
+        if type(def) == "table" and def.Type == "Lucky Block"
+            and tostring(def.Name or "") == tostring(model.Name) then
+            return def
         end
     end
-
-    -- Give the previous backpack/yeet transaction a tiny gap before the next steal.
-    -- Without this, cycle #2 can start while the server is still finishing cycle #1.
-    Runtime.nextStealAt = os.clock() + 0.30
-    Runtime.stealing = false
-    setAction("Ready")
-    return holding or actionConfirmed
-end
-
-Runtime.__rs_eggRarityName = function(item)
-    if type(item) ~= "table" or item.type ~= "egg" or type(item.egg) ~= "table" then return nil end
-    if not EggUT or type(EggUT.getDisplayRarity) ~= "function" then return nil end
-    local egg = item.egg
-    local ok, rarity = pcall(EggUT.getDisplayRarity, egg.name, egg.chicken, egg.variant)
-    if not ok or not rarity then return nil end
-    local okName, name = pcall(function() return rarity:getName() end)
-    return okName and tostring(name) or nil
-end
-
-Runtime.__rs_itemId = function(item)
-    if BackpackUT and type(BackpackUT.getItemId) == "function" then
-        local ok, id = pcall(BackpackUT.getItemId, item)
-        if ok and type(id) == "string" then return id end
-    end
-    if type(item) == "table" and type(item.egg) == "table" then return item.egg.id end
-    if type(item) == "table" and type(item.chicken) == "table" then return item.chicken.id end
     return nil
 end
 
-Runtime.__rs_sellSelectedEggs = function()
-    if not Remotes then return end
-    local mode = Config.SellMode
-    if mode == "Sell All" then
-        remoteFire(Remotes.data.backpack.sellAllItems, "egg")
-        return
+local function getEggRarity(model)
+    local def = getEggDefinition(model)
+    return tostring((def and def.Rarity) or model:GetAttribute("Rarity") or "Common")
+end
+
+local function getEggRarityRank(model)
+    return rarityRank[getEggRarity(model)] or 0
+end
+
+local function getEggRequirement(model)
+    if not model then return nil, "none" end
+
+    -- The real game gates pulling by RARITY_PULL_STRENGTHS.MinStrength.
+    local rarity = getEggRarity(model)
+    local req = rarityMinStrength[rarity]
+    if req ~= nil then return req, "rarity:" .. rarity end
+
+    -- Runtime attribute/value fallback for future game updates/new rarities.
+    local names = {"StrengthRequirement", "RequiredStrength", "MinStrength"}
+    local probes = {model, model:FindFirstChild("Mass")}
+    for _, obj in ipairs(probes) do
+        if obj then
+            for _, key in ipairs(names) do
+                local okA, attr = pcall(function() return obj:GetAttribute(key) end)
+                local n = okA and tonumber(attr) or nil
+                if n and n >= 0 then return n, "attribute" end
+            end
+        end
     end
-    local sold = 0
-    for _, item in pairs(getBackpackItems()) do
-        if type(item) == "table" and item.type == "egg" then
-            local favorite = item.favorite == true
-            if not (Config.NeverSellFavorites and favorite) then
-                local rarity = Runtime.__rs_eggRarityName(item) or "Unknown"
-                local selected = type(Config.SellRarity) == "table" and Config.SellRarity[rarity] == true
-                local shouldSell = (mode == "Selected Rarity" and selected) or (mode == "Keep Selected Rarity" and not selected)
-                if shouldSell then
-                    local id = Runtime.__rs_itemId(item)
-                    if id then
-                        remoteFire(Remotes.data.backpack.sellItem, id)
-                        sold = sold + 1
-                        if sold >= 14 then break end
-                        task.wait(0.12)
+    for _, key in ipairs(names) do
+        local value = model:FindFirstChild(key, true)
+        if value and (value:IsA("NumberValue") or value:IsA("IntValue")) then
+            local n = tonumber(value.Value)
+            if n and n >= 0 then return n, "value" end
+        end
+    end
+    return nil, "unknown"
+end
+
+local function findTargetEgg()
+    if not requireReady() then return nil end
+    local hrp = rootHumanoid()
+    if not hrp then return nil end
+
+    local d = getData(true)
+    local strength = tonumber(d and d.Strength) or 0
+    local smart = Config.SmartStrengthTarget and Config.EggChoice == "Any"
+    local chosen, chosenRank, chosenReq, chosenDist = nil, -math.huge, -math.huge, math.huge
+    local nextLockedReq = math.huge
+
+    for _, model in ipairs(WorldFriends:GetChildren()) do
+        if model:IsA("Model") and model.PrimaryPart then
+            if Config.EggChoice == "Any" or model.Name == Config.EggChoice then
+                local mass = model:FindFirstChild("Mass")
+                local stealing = mass and mass:FindFirstChild("STEALING")
+                local prompt = model:FindFirstChild("StealPrompt", true)
+                if not stealing and prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled ~= false then
+                    local dist = (model.PrimaryPart.Position - hrp.Position).Magnitude
+                    if not smart then
+                        if dist < chosenDist then
+                            chosenDist, chosen = dist, model
+                        end
+                    else
+                        local req = select(1, getEggRequirement(model))
+                        local rank = getEggRarityRank(model)
+                        if req ~= nil then
+                            if req > strength and req < nextLockedReq then
+                                nextLockedReq = req
+                            end
+                            if req <= strength then
+                                if rank > chosenRank
+                                    or (rank == chosenRank and req > chosenReq)
+                                    or (rank == chosenRank and req == chosenReq and dist < chosenDist) then
+                                    chosen, chosenRank, chosenReq, chosenDist = model, rank, req, dist
+                                end
+                            end
+                        end
                     end
                 end
             end
         end
     end
+
+    if smart and chosen then
+        State.LastEggRequirement = string.format("%s · Need %s / STR %s",
+            getEggRarity(chosen), tostring(chosenReq), tostring(strength))
+    elseif smart and nextLockedReq < math.huge then
+        State.LastEggRequirement = string.format("Next Need %s / STR %s", tostring(nextLockedReq), tostring(strength))
+    elseif smart then
+        State.LastEggRequirement = "No pullable egg spawned"
+    else
+        State.LastEggRequirement = "Manual target"
+    end
+    return chosen
 end
 
-Runtime.__rs_openEggsOnce = function()
-    if not Remotes then return end
-    local opened = 0
-    for _, item in pairs(getBackpackItems()) do
-        if type(item) == "table" and item.type == "egg" then
-            local id = Runtime.__rs_itemId(item)
-            if id then
-                remoteRequest(Remotes.data.backpack.openEgg, id)
-                opened = opened + 1
-                if opened >= 8 then break end
-                task.wait(0.20)
+local function triggerPrompt(prompt)
+    if not prompt then return false end
+    if type(fireproximityprompt) ~= "function" then
+        State.LastError = "Executor missing fireproximityprompt"
+        return false
+    end
+    local old = prompt.HoldDuration
+    pcall(function() prompt.HoldDuration = 0 end)
+    local ok = pcall(function() fireproximityprompt(prompt) end)
+    if not ok then
+        ok = pcall(function() fireproximityprompt(prompt, old or 0) end)
+    end
+    task.delay(0.15, function()
+        pcall(function() prompt.HoldDuration = old end)
+    end)
+    return ok
+end
+
+local function heldFriendUID()
+    local char = LocalPlayer.Character
+    if char then
+        for _, child in ipairs(char:GetChildren()) do
+            if child:IsA("Tool") then
+                local uid = child:GetAttribute("friendUID")
+                if uid then return tostring(uid) end
             end
         end
     end
+    if State.Holding and State.HeldUID then
+        return tostring(State.HeldUID)
+    end
+    return nil
 end
 
-Runtime.__rs_claimAllOnce = function()
-    if not Remotes then return end
-    local data = Remotes.data
-    local gameR = Remotes.game
-    if data.rewards then
-        remoteFire(data.rewards.claimJoinReward)
-        for _, key in ipairs(PlayRewardKeys) do
-            remoteFire(data.rewards.claimPlayReward, key)
-            task.wait(0.025)
+local function isHoldingFriend()
+    if State.Holding then return true end
+    local ok, attr = pcall(function() return LocalPlayer:GetAttribute("holdingFriend") end)
+    if ok and attr then return true end
+    return heldFriendUID() ~= nil
+end
+
+local function getExistingPositions()
+    local out = {}
+    local d = getData()
+    for _, info in pairs((d and d.PlotFriends) or {}) do
+        if type(info) == "table" and type(info.pos) == "table" then
+            local x,z = tonumber(info.pos.x), tonumber(info.pos.z)
+            if x and z then out[#out+1] = Vector2.new(x,z) end
         end
     end
-    if data.group then remoteFire(data.group.claimReward) end
-    if data.follow then remoteFire(data.follow.claimReward) end
-    if data.index then
-        remoteFire(data.index.claimMoney)
-        remoteFire(data.index.claimFullReward)
-        for _, zone in ipairs(ZoneKeys) do
-            remoteFire(data.index.claimZoneReward, zone)
-            task.wait(0.025)
+    return out
+end
+
+local function choosePlacement()
+    if not Base then return 0,0 end
+    local sx = math.max(8, Base.Size.X * 0.72)
+    local sz = math.max(8, Base.Size.Z * 0.72)
+    local existing = getExistingPositions()
+
+    for ix=-2,2 do
+        for iz=-2,2 do
+            local c = Vector2.new(ix*sx/5, iz*sz/5)
+            local clear = true
+            for _, old in ipairs(existing) do
+                if (c-old).Magnitude < 4 then clear=false break end
+            end
+            if clear then return c.X,c.Y end
         end
     end
-    if gameR and gameR.wheels then remoteFire(gameR.wheels.claimReward) end
-    if data.fuse then remoteFire(data.fuse.claimFuse) end
+    return 0,0
 end
 
-Runtime.__rs_redeemAllCodes = function()
-    if not Remotes or not Remotes.data.codes then return end
-    task.spawn(function()
-        setAction("Redeeming codes")
-        for _, key in ipairs(CodeKeys) do
-            remoteFire(Remotes.data.codes.redeemCode, key)
-            task.wait(0.25)
-        end
-        setAction("Ready")
-        notify("Redeem All Codes sent")
-    end)
-end
+-- Relay transport constants. Every movement hop while carrying an egg MUST be
+-- followed by Drop Friend, then the SAME egg is picked up again before the next hop.
+local RELAY_MAX_HOPS = 100
+local RELAY_SETTLE_TIME = 0.22
+local RELAY_DROP_TIMEOUT = 2.0
+local RELAY_PICKUP_TIMEOUT = 5.0
 
-Runtime.__rs_teleportZone = function(display)
-    local key = ZoneKeyByDisplay[display] or tostring(display or ""):lower()
-    if key ~= "" and Remotes and Remotes.game and Remotes.game.teleport then
-        remoteFire(Remotes.game.teleport.teleportTo, key)
+local function waitHolding(wanted, timeout)
+    local deadline = os.clock() + (timeout or 2)
+    while State.Running and os.clock() < deadline do
+        if isHoldingFriend() == wanted then return true end
+        task.wait(0.05)
     end
+    return isHoldingFriend() == wanted
 end
 
-Runtime.__rs_upgradeOnce = function(name)
-    if not Remotes or not Remotes.data or not Remotes.data.upgrades then return end
-    local amount = Config.UpgradeMode == "Buy Max" and 10 or 1
-    if amount == 1 then
-        remoteFire(Remotes.data.upgrades.upgrade, name, 1)
-    else
-        for _ = 1, amount do
-            remoteFire(Remotes.data.upgrades.upgrade, name, 1)
-            task.wait(0.07)
-        end
+local function makeEggToken(model)
+    local id = model and model:GetAttribute("ID")
+    return {
+        model = model,
+        id = id ~= nil and tostring(id) or nil,
+        name = model and model.Name or nil,
+        rarity = model and getEggRarity(model) or nil,
+        uid = nil,
+    }
+end
+
+local function eggMatchesToken(model, token)
+    if not (model and token and model:IsA("Model")) then return false end
+    if token.uid then
+        local uid = model:GetAttribute("friendUID") or model:GetAttribute("FriendUID")
+            or model:GetAttribute("uid") or model:GetAttribute("UID")
+        if uid ~= nil and tostring(uid) == tostring(token.uid) then return true end
     end
-end
-
-Runtime.__rs_baseUpgradeOnce = function()
-    if not Remotes then return end
-    local repeats = Config.UpgradeMode == "Buy Max" and 8 or 1
-    for _ = 1, repeats do
-        remoteFire(Remotes.data.base.upgradeBase)
-        if repeats > 1 then task.wait(0.10) end
+    if token.id then
+        local id = model:GetAttribute("ID")
+        if id ~= nil and tostring(id) == tostring(token.id) then return true end
     end
+    return token.name ~= nil and model.Name == token.name
 end
 
-Runtime.__rs_runUpgradeCycle = function()
-    local priority = Config.UpgradePriority
-    if priority == "Speed" then
-        if Config.AutoSpeedUpgrade then Runtime.__rs_upgradeOnce("speedMultiplier") end
-        if Config.AutoTreadmillUpgrade then Runtime.__rs_upgradeOnce("treadmill") end
-        if Config.AutoBaseUpgrade then Runtime.__rs_baseUpgradeOnce() end
-    elseif priority == "Base" then
-        if Config.AutoBaseUpgrade then Runtime.__rs_baseUpgradeOnce() end
-        if Config.AutoTreadmillUpgrade then Runtime.__rs_upgradeOnce("treadmill") end
-        if Config.AutoSpeedUpgrade then Runtime.__rs_upgradeOnce("speedMultiplier") end
-    else
-        if Config.AutoTreadmillUpgrade then Runtime.__rs_upgradeOnce("treadmill") end
-        if Config.AutoSpeedUpgrade then Runtime.__rs_upgradeOnce("speedMultiplier") end
-        if Config.AutoBaseUpgrade then Runtime.__rs_baseUpgradeOnce() end
+local function findLockedEgg(token, nearPosition)
+    if not token or not WorldFriends then return nil end
+
+    local original = token.model
+    if original and original.Parent and original:IsDescendantOf(WorldFriends) and original.PrimaryPart then
+        return original
     end
-end
 
-Runtime.__rs_scanGuardPart = function(inst)
-    if not inst or not inst:IsA("BasePart") then return end
-    local ok, group = pcall(function() return inst.CollisionGroup end)
-    if ok and group == "Guard" then Runtime.guardParts[inst] = true end
-end
-for _, inst in ipairs(workspace:GetDescendants()) do Runtime.__rs_scanGuardPart(inst) end
-rememberConnection(workspace.DescendantAdded:Connect(Runtime.__rs_scanGuardPart))
+    local origin = nearPosition
+    if not origin then
+        local hrp = rootHumanoid()
+        origin = hrp and hrp.Position or Vector3.zero
+    end
 
-Runtime.__rs_nearestGuardDistance = function()
-    local root = rootPart()
-    if not root then return math.huge end
-    local best = math.huge
-    for part in pairs(Runtime.guardParts) do
-        if part and part.Parent then
-            local d = (root.Position - part.Position).Magnitude
-            if d < best then best = d end
+    local best, bestDist = nil, math.huge
+    for _, model in ipairs(WorldFriends:GetChildren()) do
+        if model:IsA("Model") and model.PrimaryPart and eggMatchesToken(model, token) then
+            local dist = (model.PrimaryPart.Position - origin).Magnitude
+            if dist < bestDist then
+                best, bestDist = model, dist
+            end
         end
     end
+    if best then token.model = best end
     return best
 end
 
-Runtime.__rs_hookCharacterManager = function()
-    local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
-    local module = scripts and findModule(scripts, "characterManager")
-    local manager = safeRequire(module)
-    if type(manager) ~= "table" or type(manager.applyForce) ~= "function" then return false end
-    Runtime.characterManager = manager
-    Runtime.originalApplyForce = manager.applyForce
-    manager.applyForce = function(...)
-        if Runtime.alive and (Config.AntiKnockback or Config.AntiGuard) then
-            setAction("Blocked knockback")
-            return false
-        end
-        return Runtime.originalApplyForce(...)
-    end
-    return true
-end
-
-Runtime.__rs_restoreCharacterManager = function()
-    if Runtime.characterManager and Runtime.originalApplyForce then
-        pcall(function() Runtime.characterManager.applyForce = Runtime.originalApplyForce end)
-    end
-    Runtime.characterManager = nil
-    Runtime.originalApplyForce = nil
-end
-
-Runtime.__rs_applyCharacterOverrides = function()
-    local hum = humanoid()
-    local root = rootPart()
-    if hum then
-        if Config.WalkSpeedOverride then pcall(function() hum.WalkSpeed = Config.WalkSpeed end) end
-        if Config.JumpPowerOverride then
-            pcall(function()
-                hum.UseJumpPower = true
-                hum.JumpPower = Config.JumpPower
-            end)
-        end
-    end
-    if root and (Config.AntiKnockback or Config.AntiGuard) then
-        if root.AssemblyLinearVelocity.Magnitude > 140 then
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-        end
-    end
-end
-
-Runtime.__rs_applyNoclip = function()
-    local char = character()
-    if not char then return end
-    if Config.Noclip then
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if Runtime.noclipOriginal[part] == nil then Runtime.noclipOriginal[part] = part.CanCollide end
-                part.CanCollide = false
+State.__rs_waitLockedEggReady = function(token, nearPosition, timeout)
+    local deadline = os.clock() + (timeout or RELAY_PICKUP_TIMEOUT)
+    local lastModel
+    while State.Running and os.clock() < deadline do
+        local model = findLockedEgg(token, nearPosition)
+        if model then
+            lastModel = model
+            local mass = model:FindFirstChild("Mass")
+            local stealing = mass and mass:FindFirstChild("STEALING")
+            local prompt = model:FindFirstChild("StealPrompt", true)
+            if not stealing and prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled ~= false then
+                return model, prompt
             end
         end
-    else
-        for part, original in pairs(Runtime.noclipOriginal) do
-            if part and part.Parent then pcall(function() part.CanCollide = original end) end
-            Runtime.noclipOriginal[part] = nil
+        task.wait(0.06)
+    end
+    if lastModel then
+        return lastModel, lastModel:FindFirstChild("StealPrompt", true)
+    end
+    return nil, nil
+end
+
+State.__rs_forceDropHeldEgg = function()
+    if not isHoldingFriend() then return true end
+    setAction("DROP wajib")
+
+    for attempt = 1, 3 do
+        remoteFire(R.DropFriend)
+        if waitHolding(false, RELAY_DROP_TIMEOUT) then
+            task.wait(0.08)
+            return true
         end
+        State.LastError = "Drop retry " .. tostring(attempt)
     end
-end
 
-rememberConnection(UserInputService.JumpRequest:Connect(function()
-    if Config.InfiniteJump then
-        local hum = humanoid()
-        if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
-    end
-end))
-
--- White Screen.
-Runtime.__rs_destroyWhiteScreen = function()
-    if Runtime.whiteScreen and Runtime.whiteScreen.Parent then pcall(function() Runtime.whiteScreen:Destroy() end) end
-    Runtime.whiteScreen = nil
-    pcall(function() RunService:Set3dRenderingEnabled(true) end)
-    if type(setfpscap) == "function" then pcall(setfpscap, 60) end
-end
-
-Runtime.__rs_setWhiteScreen = function(enabled)
-    if not enabled then Runtime.__rs_destroyWhiteScreen() return end
-    Runtime.__rs_destroyWhiteScreen()
-    local root = nil
-    if type(gethui) == "function" then local ok, r = pcall(gethui); if ok then root = r end end
-    root = root or LocalPlayer:WaitForChild("PlayerGui")
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AliceHUB_WhiteScreen"
-    gui.IgnoreGuiInset = true
-    gui.ResetOnSpawn = false
-    gui.DisplayOrder = 2147483000
-    gui.Parent = root
-    Runtime.whiteScreen = gui
-
-    local bg = Instance.new("Frame")
-    bg.Size = UDim2.fromScale(1,1)
-    bg.BackgroundColor3 = Color3.new(0,0,0)
-    bg.BorderSizePixel = 0
-    bg.Parent = gui
-
-    local title = Instance.new("TextLabel")
-    title.AnchorPoint = Vector2.new(0.5,0.5)
-    title.Position = UDim2.fromScale(0.5,0.46)
-    title.Size = UDim2.fromOffset(420,40)
-    title.BackgroundTransparency = 1
-    title.Text = "AliceHUB"
-    title.TextColor3 = Color3.fromRGB(242,236,239)
-    title.TextSize = 24
-    title.Font = Enum.Font.Code
-    title.Parent = bg
-
-    local sub = Instance.new("TextLabel")
-    sub.AnchorPoint = Vector2.new(0.5,0.5)
-    sub.Position = UDim2.fromScale(0.5,0.52)
-    sub.Size = UDim2.fromOffset(520,50)
-    sub.BackgroundTransparency = 1
-    sub.Text = "Steal a Chicken | White Screen"
-    sub.TextColor3 = Color3.fromRGB(181,126,143)
-    sub.TextSize = 13
-    sub.Font = Enum.Font.Code
-    sub.Parent = bg
-
-    local exit = Instance.new("TextButton")
-    exit.AnchorPoint = Vector2.new(0.5,0.5)
-    exit.Position = UDim2.fromScale(0.5,0.61)
-    exit.Size = UDim2.fromOffset(170,34)
-    exit.BackgroundColor3 = Color3.fromRGB(35,23,28)
-    exit.TextColor3 = Color3.fromRGB(242,236,239)
-    exit.Text = "Exit White Screen"
-    exit.TextSize = 12
-    exit.Font = Enum.Font.Code
-    exit.BorderSizePixel = 0
-    exit.Parent = bg
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = exit
-    exit.Activated:Connect(function()
-        Config.WhiteScreen = false
-        queueSave()
-        if Library.Toggles.SAC_WhiteScreen then Library.Toggles.SAC_WhiteScreen:SetValue(false) else Runtime.__rs_destroyWhiteScreen() end
-    end)
-
-    pcall(function() RunService:Set3dRenderingEnabled(false) end)
-    if type(setfpscap) == "function" then pcall(setfpscap, 10) end
-end
-
--- Ultra Performance. Changes are intentionally one-way until rejoin for stability.
-Runtime.__rs_disconnectUltraConnections = function()
-    for _, conn in ipairs(Runtime.ultraConnections) do pcall(function() conn:Disconnect() end) end
-    table.clear(Runtime.ultraConnections)
-end
-
-Runtime.__rs_shouldProtectVisual = function(inst)
-    local char = character()
-    if char and inst:IsDescendantOf(char) then return true end
-    if Library.ScreenGui and inst:IsDescendantOf(Library.ScreenGui) then return true end
-    if logoGui and inst:IsDescendantOf(logoGui) then return true end
-    if Runtime.whiteScreen and inst:IsDescendantOf(Runtime.whiteScreen) then return true end
+    State.LastError = "Drop Friend did not release egg"
     return false
 end
 
-Runtime.__rs_optimizeUltraInstance = function(inst)
-    if not inst or Runtime.__rs_shouldProtectVisual(inst) then return end
-    if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam") or inst:IsA("Fire") or inst:IsA("Smoke") or inst:IsA("Sparkles") then
-        inst.Enabled = false
-    elseif inst:IsA("PointLight") or inst:IsA("SpotLight") or inst:IsA("SurfaceLight") then
-        inst.Enabled = false
-    elseif inst:IsA("PostEffect") then
-        inst.Enabled = false
-    elseif inst:IsA("Atmosphere") then
-        inst.Density = 0
-        inst.Haze = 0
-    elseif inst:IsA("Clouds") then
-        inst.Enabled = false
-    elseif inst:IsA("Decal") or inst:IsA("Texture") then
-        inst.Transparency = 1
-    elseif inst:IsA("SurfaceAppearance") then
-        pcall(function() inst:Destroy() end)
-    elseif inst:IsA("MeshPart") then
-        pcall(function() inst.TextureID = "" end)
-        inst.CastShadow = false
-    elseif inst:IsA("BasePart") then
-        inst.CastShadow = false
-        inst.Material = Enum.Material.SmoothPlastic
-        inst.Reflectance = 0
+State.__rs_pickupLockedEgg = function(token, nearPosition)
+    if isHoldingFriend() then
+        local uid = heldFriendUID()
+        if uid then token.uid = tostring(uid) end
+        return true
     end
-end
 
-Runtime.__rs_setUltraPerformance = function(enabled)
-    Runtime.__rs_disconnectUltraConnections()
-    Runtime.ultraGeneration = Runtime.ultraGeneration + 1
-    if not enabled then
-        setAction("Ultra Performance off | rejoin restores visuals")
-        return
+    local model, prompt = State.__rs_waitLockedEggReady(token, nearPosition, RELAY_PICKUP_TIMEOUT)
+    if not (model and prompt) then
+        State.LastError = "Locked egg not found after drop"
+        return false
     end
-    local generation = Runtime.ultraGeneration
-    pcall(function()
-        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-    end)
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 9e9
-        Lighting.Brightness = 1
-    end)
-    local terrain = workspace:FindFirstChildOfClass("Terrain")
-    if terrain then
-        pcall(function()
-            terrain.WaterWaveSize = 0
-            terrain.WaterWaveSpeed = 0
-            terrain.WaterReflectance = 0
-            terrain.WaterTransparency = 1
-            terrain.Decoration = false
-        end)
-    end
-    task.spawn(function()
-        local list = workspace:GetDescendants()
-        local i = 1
-        while Runtime.alive and Config.UltraPerformance and generation == Runtime.ultraGeneration and i <= #list do
-            for _ = 1, 300 do
-                local inst = list[i]
-                if not inst then break end
-                pcall(Runtime.__rs_optimizeUltraInstance, inst)
-                i = i + 1
+
+    token.model = model
+    setAction("Ambil lagi: " .. tostring(token.name or model.Name))
+
+    -- After a hop the egg can lag behind the player. Always return to the SAME egg first.
+    if model.PrimaryPart then
+        local hrp = rootHumanoid()
+        if hrp and (hrp.Position - model.PrimaryPart.Position).Magnitude > 7 then
+            if not moveToPosition(model.PrimaryPart.Position) then
+                State.LastError = "Could not return to dropped egg"
+                return false
             end
-            RunService.Heartbeat:Wait()
-        end
-        if Runtime.alive and Config.UltraPerformance and generation == Runtime.ultraGeneration then
-            setAction("Ultra Performance active")
-        end
-    end)
-    Runtime.ultraConnections[#Runtime.ultraConnections + 1] = workspace.DescendantAdded:Connect(function(inst)
-        if Runtime.alive and Config.UltraPerformance and generation == Runtime.ultraGeneration then
-            task.defer(function() pcall(Runtime.__rs_optimizeUltraInstance, inst) end)
-        end
-    end)
-    Runtime.ultraConnections[#Runtime.ultraConnections + 1] = Lighting.ChildAdded:Connect(function(inst)
-        if Runtime.alive and Config.UltraPerformance and generation == Runtime.ultraGeneration then
-            task.defer(function() pcall(Runtime.__rs_optimizeUltraInstance, inst) end)
-        end
-    end)
-end
-
--- UI binding / autosave.
-local Controls = {}
-local applyingControls = false
-
-Runtime.__rs_bindToggle = function(box, id, key, text, callback)
-    local opt = box:AddToggle(id, {Text = text, Default = Config[key] == true})
-    Controls[key] = opt
-    opt:OnChanged(function(value)
-        Config[key] = value == true
-        if not applyingControls then queueSave() end
-        if callback then pcall(callback, Config[key]) end
-    end)
-    return opt
-end
-
-Runtime.__rs_bindSlider = function(box, id, key, text, min, max, rounding, suffix, callback)
-    local opt = box:AddSlider(id, {Text = text, Min = min, Max = max, Default = tonumber(Config[key]) or min, Rounding = rounding or 0, Suffix = suffix or ""})
-    Controls[key] = opt
-    opt:OnChanged(function(value)
-        Config[key] = tonumber(value) or Config[key]
-        if not applyingControls then queueSave() end
-        if callback then pcall(callback, Config[key]) end
-    end)
-    return opt
-end
-
-Runtime.__rs_bindDropdown = function(box, id, key, text, values, multi, callback)
-    local default = Config[key]
-    if multi and type(default) ~= "table" then default = {} end
-    local opt = box:AddDropdown(id, {Text = text, Values = values, Default = default, Multi = multi == true})
-    Controls[key] = opt
-    opt:OnChanged(function(value)
-        if multi and type(value) == "table" then Config[key] = table.clone(value) else Config[key] = value end
-        if not applyingControls then queueSave() end
-        if callback then pcall(callback, Config[key]) end
-    end)
-    return opt
-end
-
-Runtime.__rs_applyConfigToControls = function()
-    applyingControls = true
-    for key, opt in pairs(Controls) do
-        if opt and type(opt.SetValue) == "function" and Config[key] ~= nil then
-            pcall(opt.SetValue, opt, Config[key])
+            task.wait(0.08)
         end
     end
-    applyingControls = false
+
+    prompt = model:FindFirstChild("StealPrompt", true)
+    if not prompt or not triggerPrompt(prompt) then
+        State.LastError = "Re-pick prompt failed"
+        return false
+    end
+
+    if not waitHolding(true, RELAY_PICKUP_TIMEOUT) then
+        State.LastError = "Could not re-pick locked egg"
+        return false
+    end
+
+    local uid = heldFriendUID()
+    if uid then token.uid = tostring(uid) end
+    return true
 end
 
-local Tabs = {
-    Main = window:AddTab("Main"),
-    Eggs = window:AddTab("Eggs"),
-    Upgrade = window:AddTab("Upgrade"),
-    Player = window:AddTab("Player"),
-    Misc = window:AddTab("Misc"),
-    Settings = window:AddTab("Settings"),
-}
-
-local MainSteal = Tabs.Main:AddLeftGroupbox("Steal")
-local MainReturn = Tabs.Main:AddLeftGroupbox("Return")
-local MainStatus = Tabs.Main:AddRightGroupbox("Status")
-
-Runtime.__rs_bindToggle(MainSteal, "SAC_AutoSteal", "AutoSteal", "Auto Steal Chicken")
-Runtime.__rs_bindDropdown(MainSteal, "SAC_TargetPriority", "TargetPriority", "Target Priority", {"Nearest", "Highest Rarity", "Highest Value"}, false)
-local rarityFilterControl = Runtime.__rs_bindDropdown(MainSteal, "SAC_RarityFilter", "RarityFilter", "Rarity Filter", RarityNames, true)
-Runtime.__rs_bindToggle(MainSteal, "SAC_IncludeInsane", "IncludeInsane", "Include Insane Chicken")
-Runtime.__rs_bindDropdown(MainSteal, "SAC_Movement", "MovementMode", "Movement", {"Instant TP", "Tween", "Smart"}, false)
-Runtime.__rs_bindSlider(MainSteal, "SAC_TweenSpeed", "TweenSpeed", "Tween Speed", 50, 2500, 0, "")
-Runtime.__rs_bindSlider(MainSteal, "SAC_StealDelay", "StealDelay", "Steal Delay", 0.15, 3, 2, "s")
-MainSteal:AddButton({Text = "Steal Best Now", Func = function()
-    task.spawn(function()
-        local target = Runtime.__rs_findBestTarget()
-        if target then Runtime.__rs_stealTarget(target) else notify("No matching chicken found") end
-    end)
-end})
-
-Runtime.__rs_bindToggle(MainReturn, "SAC_AutoReturn", "AutoReturn", "Auto Return To Base")
-Runtime.__rs_bindToggle(MainReturn, "SAC_AutoDrop", "AutoDrop", "Auto Drop Chicken")
-Runtime.__rs_bindToggle(MainReturn, "SAC_AutoRecover", "AutoRecover", "Auto Recover Chicken")
-Runtime.__rs_bindSlider(MainReturn, "SAC_ReturnDelay", "ReturnDelay", "Return Delay", 0, 2, 2, "s")
-MainReturn:AddButton({Text = "Teleport To Base", Func = function() task.spawn(function() moveToBase(true) end) end})
-MainReturn:AddButton({Text = "Drop Chicken Now", Func = function() task.spawn(function() Runtime.__rs_dropAtBase(true) end) end})
-
-local StatusBackend = MainStatus:AddLabel("Backend: loading", true)
-local StatusAction = MainStatus:AddLabel("Action: initializing", true)
-local StatusTarget = MainStatus:AddLabel("Target: -", true)
-local StatusHolding = MainStatus:AddLabel("Holding: -", true)
-local StatusPen = MainStatus:AddLabel("Pen: -", true)
-
-local EggCollect = Tabs.Eggs:AddLeftGroupbox("Collect")
-local EggSell = Tabs.Eggs:AddRightGroupbox("Sell")
-Runtime.__rs_bindToggle(EggCollect, "SAC_AutoCollect", "AutoCollectEggs", "Auto Collect Eggs")
-Runtime.__rs_bindSlider(EggCollect, "SAC_CollectDelay", "CollectDelay", "Collect Delay", 0.55, 5, 2, "s")
-Runtime.__rs_bindToggle(EggCollect, "SAC_AutoOpen", "AutoOpenEggs", "Auto Open Eggs")
-Runtime.__rs_bindSlider(EggCollect, "SAC_OpenDelay", "OpenDelay", "Open Delay", 0.25, 5, 2, "s")
-EggCollect:AddButton({Text = "Collect All Now", Func = function() if Remotes then remoteFire(Remotes.data.base.claimAllEggs) end end})
-EggCollect:AddButton({Text = "Open Eggs Now", Func = function() task.spawn(Runtime.__rs_openEggsOnce) end})
-
-Runtime.__rs_bindToggle(EggSell, "SAC_AutoSell", "AutoSell", "Auto Sell")
-Runtime.__rs_bindDropdown(EggSell, "SAC_SellMode", "SellMode", "Sell Mode", {"Sell All", "Selected Rarity", "Keep Selected Rarity"}, false)
-local sellRarityControl = Runtime.__rs_bindDropdown(EggSell, "SAC_SellRarity", "SellRarity", "Sell Rarity", RarityNames, true)
-Runtime.__rs_bindSlider(EggSell, "SAC_SellDelay", "SellDelay", "Sell Delay", 0.6, 8, 2, "s")
-Runtime.__rs_bindToggle(EggSell, "SAC_NeverSellFavorites", "NeverSellFavorites", "Never Sell Favorites")
-EggSell:AddButton({Text = "Sell Now", Func = function() task.spawn(Runtime.__rs_sellSelectedEggs) end})
-
-local UpgradeMain = Tabs.Upgrade:AddLeftGroupbox("Automation")
-local UpgradeSettings = Tabs.Upgrade:AddRightGroupbox("Settings")
-Runtime.__rs_bindToggle(UpgradeMain, "SAC_AutoTreadmillUpgrade", "AutoTreadmillUpgrade", "Auto Treadmill")
-Runtime.__rs_bindToggle(UpgradeMain, "SAC_AutoSpeedUpgrade", "AutoSpeedUpgrade", "Auto Speed Upgrade")
-Runtime.__rs_bindToggle(UpgradeMain, "SAC_AutoBaseUpgrade", "AutoBaseUpgrade", "Auto Base Upgrade")
-Runtime.__rs_bindDropdown(UpgradeSettings, "SAC_UpgradePriority", "UpgradePriority", "Upgrade Priority", {"Speed", "Base", "Balanced"}, false)
-Runtime.__rs_bindDropdown(UpgradeSettings, "SAC_UpgradeMode", "UpgradeMode", "Upgrade Mode", {"Buy 1", "Buy Max"}, false)
-Runtime.__rs_bindSlider(UpgradeSettings, "SAC_UpgradeDelay", "UpgradeDelay", "Upgrade Delay", 0.3, 10, 2, "s")
-UpgradeSettings:AddButton({Text = "Run Upgrade Cycle", Func = function() task.spawn(Runtime.__rs_runUpgradeCycle) end})
-
-local PlayerMove = Tabs.Player:AddLeftGroupbox("Movement")
-local PlayerSafety = Tabs.Player:AddRightGroupbox("Safety")
-Runtime.__rs_bindToggle(PlayerMove, "SAC_WalkOverride", "WalkSpeedOverride", "WalkSpeed Override")
-Runtime.__rs_bindSlider(PlayerMove, "SAC_WalkSpeed", "WalkSpeed", "WalkSpeed", 16, 200, 0, "")
-Runtime.__rs_bindToggle(PlayerMove, "SAC_JumpOverride", "JumpPowerOverride", "JumpPower Override")
-Runtime.__rs_bindSlider(PlayerMove, "SAC_JumpPower", "JumpPower", "JumpPower", 50, 200, 0, "")
-Runtime.__rs_bindToggle(PlayerMove, "SAC_InfiniteJump", "InfiniteJump", "Infinite Jump")
-Runtime.__rs_bindToggle(PlayerMove, "SAC_Noclip", "Noclip", "Noclip", function(value) if not value then Runtime.__rs_applyNoclip() end end)
-Runtime.__rs_bindToggle(PlayerSafety, "SAC_AntiGuard", "AntiGuard", "Anti Guard")
-Runtime.__rs_bindToggle(PlayerSafety, "SAC_AntiKnockback", "AntiKnockback", "Anti Knockback")
-PlayerSafety:AddButton({Text = "Teleport To Base", Func = function() task.spawn(function() moveToBase(true) end) end})
-
-local MiscReward = Tabs.Misc:AddLeftGroupbox("Rewards")
-local MiscUtility = Tabs.Misc:AddRightGroupbox("Utility")
-Runtime.__rs_bindToggle(MiscReward, "SAC_AutoClaimAll", "AutoClaimAll", "Auto Claim All")
-Runtime.__rs_bindToggle(MiscReward, "SAC_AutoSpin", "AutoSpinWheel", "Auto Spin Wheel")
-Runtime.__rs_bindToggle(MiscReward, "SAC_AutoClaimFuse", "AutoClaimFuse", "Auto Claim Fuse")
-MiscReward:AddButton({Text = "Claim All Now", Func = function() task.spawn(Runtime.__rs_claimAllOnce) end})
-MiscReward:AddButton({Text = "Redeem All Codes", Func = Runtime.__rs_redeemAllCodes})
-
-Runtime.__rs_bindToggle(MiscUtility, "SAC_AutoEquipBest", "AutoEquipBest", "Auto Equip Best Chicken")
-MiscUtility:AddButton({Text = "Equip Best Chicken", Func = function()
-    if Remotes then remoteFire(Remotes.data.base.equipBestChickens) end
-end})
-local zoneDD = Runtime.__rs_bindDropdown(MiscUtility, "SAC_TeleportZone", "TeleportZone", "Teleport Zone", #ZoneDisplay > 0 and ZoneDisplay or {"Forest", "Lake", "Jungle", "Desert", "Snow", "Volcano", "Beach", "Abyss", "Cosmic", "Crystal"}, false)
-MiscUtility:AddButton({Text = "Teleport To Zone", Func = function() Runtime.__rs_teleportZone(Config.TeleportZone) end})
-MiscUtility:AddButton({Text = "Refresh Nests", Func = function() if Remotes then remoteFire(Remotes.game.nests.refreshNests) end end})
-
-local SettingsUtility = Tabs.Settings:AddLeftGroupbox("Utility")
-local SettingsPerformance = Tabs.Settings:AddLeftGroupbox("Performance")
-local SettingsConfig = Tabs.Settings:AddRightGroupbox("AliceHUB")
-
-Runtime.__rs_bindToggle(SettingsUtility, "SAC_AntiAFK", "AntiAFK", "Anti AFK")
-Runtime.__rs_bindToggle(SettingsUtility, "SAC_WhiteScreen", "WhiteScreen", "White Screen", Runtime.__rs_setWhiteScreen)
-Runtime.__rs_bindToggle(SettingsUtility, "SAC_AutoReconnect", "AutoReconnect", "Auto Reconnect")
-Runtime.__rs_bindToggle(SettingsPerformance, "SAC_UltraPerformance", "UltraPerformance", "Ultra Performance", Runtime.__rs_setUltraPerformance)
-
-SettingsConfig:AddLabel("Steal a Chicken", true)
-SettingsConfig:AddLabel("UI: AliceHUB / SAE", true)
-SettingsConfig:AddLabel("Config saves automatically", true)
-SettingsConfig:AddButton({Text = "Load Config", Func = function()
-    local data = readConfig()
-    if data and applyLoadedConfig(data) then
-        Runtime.__rs_applyConfigToControls()
-        notify("Config loaded")
-    else
-        notify("No saved config found")
+State.__rs_currentRelayStep = function(token)
+    -- V6: use the map's actual plot spacing instead of rope length.
+    -- This makes each TP feel like moving roughly one plot forward: far enough
+    -- to visibly move the player/egg, but still conservative for mobile executors.
+    local plots = workspace:FindFirstChild("Plots")
+    local bases = {}
+    if plots then
+        for _, plot in ipairs(plots:GetChildren()) do
+            local b = plot:FindFirstChild("Base")
+            if b and b:IsA("BasePart") then
+                bases[#bases+1] = b.Position
+            end
+        end
     end
-end})
-SettingsConfig:AddButton({Text = "Reset Config", Func = function()
-    for k, v in pairs(Defaults) do
-        Config[k] = type(v) == "table" and table.clone(v) or v
+
+    local nearestSpacing = math.huge
+    if #bases >= 2 then
+        -- Find the smallest normal horizontal spacing between plot bases.
+        -- Ignore tiny/duplicate distances so decorative/overlapping parts do not skew it.
+        for i = 1, #bases do
+            for j = i + 1, #bases do
+                local a, b = bases[i], bases[j]
+                local d = (Vector3.new(a.X,0,a.Z) - Vector3.new(b.X,0,b.Z)).Magnitude
+                if d >= 20 and d < nearestSpacing then
+                    nearestSpacing = d
+                end
+            end
+        end
     end
-    Runtime.__rs_applyConfigToControls()
-    saveConfig()
-    notify("Config reset")
-end})
-SettingsConfig:AddButton({Text = "Rejoin", Func = function()
-    TeleportService:Teleport(game.PlaceId, LocalPlayer)
-end})
-SettingsConfig:AddButton({Text = "Server Hop", Func = function()
-    task.spawn(function()
-        local ok, body = pcall(function()
-            return game:HttpGet("https://games.roblox.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100")
+
+    if nearestSpacing < math.huge then
+        -- ~90% of one plot gap: reaches the next plot area without making a huge jump.
+        return math.clamp(nearestSpacing * 0.90, 38, 62)
+    end
+
+    -- Safe fallback if Plots are not fully streamed yet.
+    return 48
+end
+
+State.__rs_eggAtBase = function(token)
+    local model = findLockedEgg(token, Base and Base.Position)
+    if not (model and model.PrimaryPart and Base) then return false end
+    local flatEgg = Vector3.new(model.PrimaryPart.Position.X, Base.Position.Y, model.PrimaryPart.Position.Z)
+    local flatBase = Vector3.new(Base.Position.X, Base.Position.Y, Base.Position.Z)
+    local radius = math.max(Base.Size.X, Base.Size.Z) * 0.52 + 5
+    return (flatEgg - flatBase).Magnitude <= radius
+end
+
+State.__rs_placeLockedEgg = function(token)
+    if not Config.AutoPlace then return true end
+    if not isHoldingFriend() then
+        if not State.__rs_pickupLockedEgg(token, Base and Base.Position) then return false end
+    end
+
+    local uid = heldFriendUID() or token.uid
+    if not uid then
+        State.LastError = "Held UID not found for final place"
+        return false
+    end
+
+    local x,z = choosePlacement()
+    setAction("Placing egg")
+    local ok = remoteFire(R.PlaceFriend, uid, x, z)
+    task.wait(0.45)
+    if ok then
+        waitHolding(false, 1.5)
+    end
+    return ok
+end
+
+State.__rs_relayLockedEggToBase = function(token)
+    if not (token and Base) then return false end
+
+    -- We enter this function holding the selected egg. Every teleport/movement hop below
+    -- is ALWAYS followed by a drop. No conditional "drop if needed" path exists.
+    for hop = 1, RELAY_MAX_HOPS do
+        if not State.Running then return false end
+        if not isHoldingFriend() then
+            if not State.__rs_pickupLockedEgg(token) then return false end
+        end
+
+        local model = findLockedEgg(token)
+        local hrp = rootHumanoid()
+        if not hrp then return false end
+        local basePos = Base.Position
+
+        -- V6 IMPORTANT: route from PLAYER position, not the lagging egg position.
+        -- Using the egg as the origin could calculate a destination that was nearly
+        -- identical to the player's current position, making the TP look stuck.
+        local flatFrom = Vector3.new(hrp.Position.X, basePos.Y, hrp.Position.Z)
+        local delta = basePos - flatFrom
+        local dist = delta.Magnitude
+        local step = State.__rs_currentRelayStep(token)
+        local dest
+
+        if dist <= step then
+            dest = basePos
+        else
+            dest = flatFrom + delta.Unit * step
+        end
+
+        State.LastEggRequirement = (State.LastEggRequirement or "")
+            .. string.format(" · Relay %d", hop)
+        setAction(string.format("TP relay %d → base", hop))
+
+        if not moveToPosition(dest) then
+            State.LastError = "Relay TP failed at hop " .. tostring(hop)
+            return false
+        end
+
+        -- Required sequence: TP completes -> settle -> DROP, every single hop.
+        task.wait(RELAY_SETTLE_TIME)
+        if not State.__rs_forceDropHeldEgg() then return false end
+
+        local droppedModel = State.__rs_waitLockedEggReady(token, dest, RELAY_PICKUP_TIMEOUT)
+        if droppedModel then token.model = droppedModel end
+
+        -- Judge completion from the EGG position, not the player position. If the rope
+        -- lagged behind, we re-grab the same egg and repeat another base-directed TP.
+        if State.__rs_eggAtBase(token) then
+            setAction("Egg sampai base · final drop done")
+            if Config.AutoPlace then
+                -- No TP here: re-grab at the base and place it. The final TP has already
+                -- been followed by its mandatory drop above.
+                return State.__rs_placeLockedEgg(token)
+            end
+            return true
+        end
+
+        if not State.__rs_pickupLockedEgg(token, dest) then return false end
+        task.wait(0.06)
+    end
+
+    State.LastError = "Relay exceeded max hops"
+    return false
+end
+
+State.__rs_returnHomeAndPlace = function()
+    if not requireReady() then return false end
+
+    -- Recovery path for an already-held egg (for example after re-execute).
+    local nearest, nearestDist
+    local hrp = rootHumanoid()
+    if WorldFriends and hrp then
+        for _, model in ipairs(WorldFriends:GetChildren()) do
+            if model:IsA("Model") and model.PrimaryPart then
+                local mass = model:FindFirstChild("Mass")
+                if mass and mass:FindFirstChild("STEALING") then
+                    local dist = (model.PrimaryPart.Position - hrp.Position).Magnitude
+                    if not nearestDist or dist < nearestDist then
+                        nearest, nearestDist = model, dist
+                    end
+                end
+            end
+        end
+    end
+
+    if nearest then
+        local token = makeEggToken(nearest)
+        local uid = heldFriendUID()
+        if uid then token.uid = tostring(uid) end
+        return State.__rs_relayLockedEggToBase(token)
+    end
+
+    -- If the world model cannot be resolved, keep a safe legacy recovery rather than
+    -- discarding whatever the player is already holding.
+    setAction("Returning held egg to plot")
+    if not moveToPosition(Base.Position) then return false end
+    task.wait(RELAY_SETTLE_TIME)
+    if not State.__rs_forceDropHeldEgg() then return false end
+    return true
+end
+
+State.__rs_pullOnce = function()
+    if not requireReady() or State.Pulling then return end
+    State.Pulling = true
+    local ok, err = xpcall(function()
+        if isHoldingFriend() then
+            State.__rs_returnHomeAndPlace()
+            return
+        end
+
+        local target = findTargetEgg()
+        if not target then
+            setAction("Waiting for egg")
+            return
+        end
+
+        local token = makeEggToken(target)
+        State.LastEgg = target.Name
+        setAction("Going to " .. target.Name)
+        if not moveToPosition(target.PrimaryPart.Position) then
+            State.LastError = "Could not reach egg"
+            return
+        end
+
+        local prompt = target:FindFirstChild("StealPrompt", true)
+        if not prompt then
+            State.LastError = "StealPrompt missing"
+            return
+        end
+
+        setAction("Pulling " .. target.Name)
+        if not triggerPrompt(prompt) then
+            State.LastError = "Prompt trigger failed"
+            return
+        end
+
+        if not waitHolding(true, 7) then
+            State.LastError = "Pull did not start"
+            return
+        end
+
+        local uid = heldFriendUID()
+        if uid then token.uid = tostring(uid) end
+        task.wait(0.06)
+
+        -- Lock this exact egg until it reaches the base. Target selection does not run
+        -- again during the relay, so a dropped egg cannot be replaced by a nearby one.
+        relayLockedEggToBase(token)
+    end, function(e)
+        local msg = tostring(e)
+        pcall(function()
+            if debug and debug.traceback then msg = debug.traceback(msg,2) end
         end)
-        if not ok then notify("Server Hop request failed") return end
-        local okDecode, data = pcall(HttpService.JSONDecode, HttpService, body)
-        if not okDecode or type(data) ~= "table" or type(data.data) ~= "table" then notify("Server Hop data failed") return end
-        for _, server in ipairs(data.data) do
-            if server.id and server.id ~= game.JobId and tonumber(server.playing) and tonumber(server.maxPlayers) and server.playing < server.maxPlayers then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+        return msg
+    end)
+    if not ok then State.LastError = tostring(err) end
+    State.Pulling = false
+    if State.Action ~= "Waiting for egg" then setAction("Idle") end
+end
+
+State.__rs_buyBestDumbellOnce = function()
+    if not requireReady() then return end
+    local d = getData()
+    if not d then return end
+    local db = (Lib.Database and Lib.Database.Dumbells) or {}
+    local unlocked = d.UnlockedDumbells or {}
+    local cash = tonumber(d.Cash) or 0
+
+    local bestOwned, bestOwnedStrength = nil, -math.huge
+    for _, id in ipairs(unlocked) do
+        local def = db[id]
+        local strength = def and tonumber(def.Strength)
+        if strength and strength > bestOwnedStrength then
+            bestOwnedStrength, bestOwned = strength, id
+        end
+    end
+
+    local bestBuy, bestBuyStrength = nil, bestOwnedStrength
+    for id,def in pairs(db) do
+        if type(def)=="table" and def.DisplayInShop ~= false then
+            local price, strength = tonumber(def.Price), tonumber(def.Strength)
+            if price and strength and price <= cash and not table.find(unlocked,id) and strength > bestBuyStrength then
+                bestBuyStrength, bestBuy = strength, id
+            end
+        end
+    end
+
+    if bestBuy then
+        remoteFire(R.BuyDumbell, bestBuy)
+        task.wait(0.2)
+        bestOwned = bestBuy
+    end
+
+    local latest = getData()
+    if latest then
+        local best, bestStrength = nil, -math.huge
+        for _,id in ipairs(latest.UnlockedDumbells or {}) do
+            local def = db[id]
+            local strength = def and tonumber(def.Strength)
+            if strength and strength > bestStrength then bestStrength,best=strength,id end
+        end
+        if best and latest.EquippedDumbell ~= best then
+            remoteFire(R.EquipDumbell, best)
+        end
+    end
+end
+
+State.__rs_openReadyEggOnce = function()
+    if not requireReady() then return false end
+    local d = getData()
+    if not d then return false end
+    local now = os.time()
+    for uid,info in pairs(d.PlotFriends or {}) do
+        if type(info)=="table" then
+            local def = Lib.Database.Friends and Lib.Database.Friends[tostring(info.id)]
+            if def and def.Type=="Lucky Block" and (tonumber(info.finishTime) or 0) <= now then
+                remoteFire(R.OpenLucky, tostring(uid))
+                return true
+            end
+        end
+    end
+    return false
+end
+
+State.__rs_collectEarningsOnce = function()
+    if not requireReady() then return end
+    local pads = MyPlot and MyPlot:FindFirstChild("CollectPads")
+    if not pads then return end
+    for _,pad in ipairs(pads:GetChildren()) do
+        if pad:IsA("Model") then
+            remoteFire(R.CollectEarnings, pad.Name)
+            task.wait(0.03)
+        end
+    end
+end
+
+State.__rs_upgradePetOnce = function()
+    if not requireReady() then return end
+    local d = getData()
+    if not d then return end
+    for uid,info in pairs(d.PlotFriends or {}) do
+        if type(info)=="table" then
+            local def = Lib.Database.Friends and Lib.Database.Friends[tostring(info.id)]
+            if def and def.Type ~= "Lucky Block" then
+                remoteFire(R.UpgradeFriend, tostring(uid))
                 return
             end
         end
-        notify("No open server found")
-    end)
-end})
-SettingsConfig:AddButton({Text = "Hide / Show UI", Func = function() Library:Toggle() end})
-
--- Dynamic values are refreshed after backend resolves.
-Runtime.__rs_refreshDynamicControls = function()
-    if rarityFilterControl and type(rarityFilterControl.SetValues) == "function" then rarityFilterControl:SetValues(RarityNames) end
-    if sellRarityControl and type(sellRarityControl.SetValues) == "function" then sellRarityControl:SetValues(RarityNames) end
-    if zoneDD and type(zoneDD.SetValues) == "function" and #ZoneDisplay > 0 then zoneDD:SetValues(ZoneDisplay) end
+    end
 end
 
--- Backend init runs after UI so the menu always appears on mobile executors.
-task.spawn(function()
-    setAction("Loading game backend")
-    local ok, err = initBackend()
-    Runtime.backendReady = ok
-    Runtime.backendError = ok and nil or err
-    if ok then
-        Runtime.__rs_refreshDynamicControls()
-        Runtime.__rs_hookCharacterManager()
-        setAction("Ready")
-        notify("Steal a Chicken backend ready", 3)
-    else
-        setAction("Backend error")
-        notify("Backend: " .. tostring(err), 7)
+State.__rs_protectedFriend = function(friend, def, plotSet)
+    if not def or def.Type=="Lucky Block" then return true end
+    if plotSet[tostring(friend.uid)] then return true end
+    if friend.locked==true or friend.Locked==true or friend.favorite==true
+        or friend.favorited==true or friend.isFavorite==true or friend.starred==true then
+        return true
     end
-end)
+    return false
+end
 
--- Main steal worker. Pen capacity is intentionally NOT a farming gate: when the pen
--- is full, stolen chickens can still be kept in backpack/inventory for Equip Best or trade.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and Config.AutoSteal and not Runtime.stealing and not Runtime.moving and os.clock() >= (Runtime.nextStealAt or 0) then
-            if isHolding() and Config.AutoReturn then
-                if Config.AutoDrop then Runtime.__rs_dropAtBase(false) else moveToBase(false) end
-                Runtime.nextStealAt = os.clock() + 0.25
-            else
-                local target = Runtime.__rs_findBestTarget()
-                if target then
-                    Runtime.__rs_stealTarget(target)
-                else
-                    setAction("Waiting for matching chicken")
-                    task.wait(0.6)
+State.__rs_sellOneSafe = function()
+    if not requireReady() then return end
+    local d = getData()
+    if not (d and d.Inventory and type(d.Inventory.Friends)=="table") then return end
+
+    local plotSet={}
+    for uid in pairs(d.PlotFriends or {}) do plotSet[tostring(uid)] = true end
+    local maxRank = rarityRank[Config.SellMaxRarity] or 1
+
+    for _,friend in ipairs(d.Inventory.Friends) do
+        local def = Lib.Database.Friends and Lib.Database.Friends[tostring(friend.id)]
+        if not State.__rs_protectedFriend(friend,def,plotSet) then
+            local rr = rarityRank[tostring(def.Rarity or "Common")] or 999
+            if rr <= maxRank then
+                remoteFire(R.SellFriend, tostring(friend.uid))
+                return
+            end
+        end
+    end
+end
+
+State.__rs_rebirthOnce = function()
+    if not requireReady() then return end
+    local d=getData()
+    if not d then return end
+    local current=tonumber(d.Rebirth) or 0
+    local stop=tonumber(Config.StopRebirth) or 0
+    if stop>0 and current>=stop then return end
+    local nextDef=Lib.Database.Rebirths and Lib.Database.Rebirths[current+1]
+    if nextDef and (tonumber(d.Strength) or 0) >= (tonumber(nextDef.StrengthRequirement) or math.huge) then
+        remoteFire(R.Rebirth)
+    end
+end
+
+State.__rs_carryUpgradeOnce = function()
+    if not requireReady() then return end
+    local d=getData()
+    if not d then return end
+    local current=tonumber(d.CarryLevel) or 0
+    local price=Lib.Database.CarryLevelPrices and Lib.Database.CarryLevelPrices[current+1]
+    if price and (tonumber(d.Cash) or 0) >= tonumber(price) then
+        remoteFire(R.UpgradeCarry)
+    end
+end
+
+State.__rs_dailyOnce = function()
+    if not requireReady() then return end
+    local d=getData()
+    if not (d and d.DailyData) then return end
+    local claimed=d.DailyData.Claimed or {}
+    local rewardTime=tonumber(d.DailyData.RewardTime) or math.huge
+    if os.time() >= rewardTime then
+        local day=#claimed+1
+        if day>=1 and day<=7 then remoteFire(R.ClaimDaily,day) end
+    end
+end
+
+State.__rs_groupOnce = function()
+    if not requireReady() then return end
+    local inGroup=false
+    pcall(function() inGroup=LocalPlayer:IsInGroup(487434901) end)
+    if inGroup then remoteFire(R.ClaimGroup) end
+end
+
+State.__rs_buyGearOnce = function()
+    if not requireReady() then return end
+    local d=getData()
+    if not d then return end
+    local owned=d.OwnedGears or {}
+    local cash=tonumber(d.Cash) or 0
+    local candidates={}
+    for id,def in pairs((Lib.Database and Lib.Database.Gears) or {}) do
+        if type(def)=="table" and def.DisplayInShop ~= false and tonumber(def.Price) then
+            candidates[#candidates+1]={id=id,price=tonumber(def.Price)}
+        end
+    end
+    table.sort(candidates,function(a,b) return a.price<b.price end)
+    for _,item in ipairs(candidates) do
+        if item.price<=cash and not table.find(owned,item.id) then
+            remoteFire(R.BuyGear,item.id,"Buy")
+            return
+        end
+    end
+end
+
+State.__rs_claimIndexOnce = function()
+    if not requireReady() or not R.ClaimIndex then return false end
+    local d = getData(true)
+    local rewards = d and d.IndexRewards
+    if type(rewards) ~= "table" then return false end
+
+    local claimed = 0
+    for friendId, variants in pairs(rewards) do
+        if type(variants) == "table" then
+            for variant, status in pairs(variants) do
+                if status == "pending" then
+                    setAction("Claiming index")
+                    local ok, result = remoteFire(R.ClaimIndex, tostring(friendId), tostring(variant))
+                    if ok and (type(result) ~= "table" or result.success ~= false) then
+                        claimed += 1
+                    end
+                    DataCacheAt = 0
+                    task.wait(0.12)
                 end
             end
         end
-        task.wait(0.08)
     end
-end)
+    if claimed > 0 then setAction("Claimed index x"..tostring(claimed)) end
+    return claimed > 0
+end
 
--- Egg collection worker.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and Config.AutoCollectEggs then
-            remoteFire(Remotes.data.base.claimAllEggs)
-            task.wait(math.max(0.55, tonumber(Config.CollectDelay) or 0.75))
-        else
-            task.wait(0.35)
-        end
-    end
-end)
-
--- Egg open worker.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and Config.AutoOpenEggs then
-            Runtime.__rs_openEggsOnce()
-            task.wait(math.max(0.25, tonumber(Config.OpenDelay) or 0.35))
-        else
-            task.wait(0.45)
-        end
-    end
-end)
-
--- Sell worker.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and Config.AutoSell then
-            Runtime.__rs_sellSelectedEggs()
-            task.wait(math.max(0.6, tonumber(Config.SellDelay) or 1))
-        else
-            task.wait(0.45)
-        end
-    end
-end)
-
--- Upgrade worker.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and (Config.AutoTreadmillUpgrade or Config.AutoSpeedUpgrade or Config.AutoBaseUpgrade) then
-            Runtime.__rs_runUpgradeCycle()
-            task.wait(math.max(0.3, tonumber(Config.UpgradeDelay) or 1.25))
-        else
-            task.wait(0.5)
-        end
-    end
-end)
-
--- Reward / misc worker.
-task.spawn(function()
-    local lastClaim, lastSpin, lastEquip, lastFuse = 0, 0, 0, 0
-    while Runtime.alive do
-        local now = os.clock()
-        if Runtime.backendReady then
-            if Config.AutoClaimAll and now - lastClaim >= 10 then
-                lastClaim = now
-                task.spawn(Runtime.__rs_claimAllOnce)
-            end
-            if Config.AutoSpinWheel and now - lastSpin >= 12 then
-                lastSpin = now
-                remoteRequest(Remotes.game.wheels.spinWheel, "dailyWheel")
-                task.wait(0.2)
-                remoteFire(Remotes.game.wheels.claimReward)
-            end
-            if Config.AutoEquipBest and now - lastEquip >= 5 then
-                lastEquip = now
-                remoteFire(Remotes.data.base.equipBestChickens)
-            end
-            if Config.AutoClaimFuse and now - lastFuse >= 4 then
-                lastFuse = now
-                remoteFire(Remotes.data.fuse.claimFuse)
+State.__rs_bestWorldName = function()
+    local d = getData()
+    local rebirth = tonumber(d and d.Rebirth) or 0
+    local bestName, bestIndex = "Spawn", 1
+    local worlds = Lib and Lib.Database and Lib.Database.Worlds
+    if type(worlds) == "table" then
+        for name, def in pairs(worlds) do
+            if type(def) == "table" and not def.ComingSoon then
+                local req = tonumber(def.RebirthRequirement) or 0
+                local idx = tonumber(def.Index) or 1
+                if req <= rebirth and idx > bestIndex then
+                    bestName, bestIndex = tostring(name), idx
+                end
             end
         end
-        task.wait(0.4)
     end
-end)
+    State.BestWorld = bestName
+    return bestName
+end
 
--- Guard safety: when carrying and a guard is very close, snap home before force/drop resolves.
-task.spawn(function()
-    while Runtime.alive do
-        if Runtime.backendReady and Config.AntiGuard and isHolding() then
-            local distance = Runtime.__rs_nearestGuardDistance()
-            if distance <= 18 then
-                setAction("Guard close | returning")
-                if Config.AutoDrop then Runtime.__rs_dropAtBase(true) else moveToBase(true) end
-                task.wait(0.5)
-            else
-                task.wait(0.10)
-            end
-        else
-            task.wait(0.25)
+State.__rs_goBestWorldOnce = function()
+    if not requireReady() or State.Pulling or isHoldingFriend() then return false end
+    local d = getData(true)
+    if not d then return false end
+    local target = State.__rs_bestWorldName()
+    local current = tostring(d.CurrentWorld or "Spawn")
+    if current == target then return true end
+
+    setAction("TP best world: "..target)
+    local ok
+    if target == "Spawn" then
+        ok = select(1, remoteFire(R.TeleportSpawn))
+    else
+        ok = select(1, remoteFire(R.TeleportWorld, target))
+    end
+    if ok then
+        DataCacheAt = 0
+        task.wait(0.7)
+    end
+    return ok
+end
+
+State.__rs_applyAntiMonsterHit = function()
+    if not Config.AntiMonsterHit then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local rag = char:FindFirstChild("Ragdolled")
+
+    if rag and rag:IsA("BoolValue") and rag.Value then
+        pcall(function() rag.Value = false end)
+    end
+    pcall(function() char:SetAttribute("inDangerZone", nil) end)
+    pcall(function() workspace:SetAttribute("inDangerZone", nil) end)
+
+    if hum then
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false) end)
+        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true) end)
+        local st = hum:GetState()
+        if st == Enum.HumanoidStateType.Ragdoll
+            or st == Enum.HumanoidStateType.Physics
+            or st == Enum.HumanoidStateType.FallingDown then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics) end)
         end
     end
-end)
 
--- Character overrides / noclip.
-rememberConnection(RunService.Stepped:Connect(function()
-    if not Runtime.alive then return end
-    pcall(Runtime.__rs_applyCharacterOverrides)
-    pcall(Runtime.__rs_applyNoclip)
-end))
-
--- Anti AFK: event fallback + timed pulse.
-rememberConnection(LocalPlayer.Idled:Connect(function()
-    if not Config.AntiAFK then return end
-    pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new(0,0))
-    end)
-end))
-task.spawn(function()
-    while Runtime.alive do
-        task.wait(45)
-        if Config.AntiAFK then
-            pcall(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new(0,0))
-            end)
-        end
-    end
-end)
-
--- Reconnect after Roblox error prompt.
-local promptOverlay = getPath(CoreGui, "RobloxPromptGui", "promptOverlay")
-if promptOverlay then
-    rememberConnection(promptOverlay.ChildAdded:Connect(function(child)
-        if not Config.AutoReconnect or not Runtime.alive then return end
-        if not child:IsA("Frame") or child.Name ~= "ErrorPrompt" then return end
-        task.delay(2.5, function()
-            if Runtime.alive and Config.AutoReconnect then
-                pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+    if hrp then
+        pcall(function()
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            -- Preserve normal walking, but kill the huge velocity spikes caused by guardians.
+            if hrp.AssemblyLinearVelocity.Magnitude > 95 then
+                hrp.AssemblyLinearVelocity = Vector3.zero
             end
         end)
-    end))
+    end
 end
 
--- Status worker.
+local whiteGui
+State.__rs_setWhiteScreen = function(on)
+    if on then
+        if whiteGui then return end
+        local root = LocalPlayer:WaitForChild("PlayerGui")
+        whiteGui=Instance.new("ScreenGui")
+        whiteGui.Name="AliceHUB_PAE_WhiteScreen"
+        whiteGui.IgnoreGuiInset=true
+        whiteGui.ResetOnSpawn=false
+        whiteGui.DisplayOrder=999998
+        local f=Instance.new("Frame")
+        f.Size=UDim2.fromScale(1,1)
+        f.BackgroundColor3=Color3.new(0,0,0)
+        f.BorderSizePixel=0
+        f.Parent=whiteGui
+        local t=Instance.new("TextLabel")
+        t.AnchorPoint=Vector2.new(0.5,0.5)
+        t.Position=UDim2.fromScale(0.5,0.5)
+        t.Size=UDim2.fromOffset(340,80)
+        t.BackgroundTransparency=1
+        t.Text="AliceHUB\nPull An Egg"
+        t.Font=Enum.Font.Code
+        t.TextSize=18
+        t.TextColor3=Color3.fromRGB(242,236,239)
+        t.Parent=f
+        whiteGui.Parent=root
+    else
+        if whiteGui then pcall(function() whiteGui:Destroy() end); whiteGui=nil end
+    end
+end
+
+-- ============================================================
+-- Exact AliceHUB tabs
+-- ============================================================
+
+local FarmTab = window:AddTab("Farm")
+local PetsTab = window:AddTab("Pets")
+local ProgressTab = window:AddTab("Progression")
+local MoveTab = window:AddTab("Movement")
+local SettingsTab = window:AddTab("Settings")
+local InfoTab = window:AddTab("Info")
+
+local TrainBox = FarmTab:AddLeftGroupbox("Training")
+local PullBox = FarmTab:AddRightGroupbox("Egg Farm")
+
+local tAutoTrain = TrainBox:AddToggle("PAE_AutoTrain",{Text="Auto Train",Default=Config.AutoTrain})
+tAutoTrain:OnChanged(function(v) Config.AutoTrain=v; queueSave() end)
+
+local iTrainDelay = TrainBox:AddInput("PAE_TrainDelay",{Text="Train Delay",Default=tostring(Config.TrainDelay),Placeholder="0.50"})
+iTrainDelay:OnChanged(function(v)
+    local n=tonumber(v)
+    if n then Config.TrainDelay=math.clamp(n,0.05,5); queueSave() end
+end)
+
+local tBestDumb = TrainBox:AddToggle("PAE_BestDumb",{Text="Auto Buy + Equip Best Dumbbell",Default=Config.AutoBuyBestDumbell})
+tBestDumb:OnChanged(function(v) Config.AutoBuyBestDumbell=v; queueSave() end)
+TrainBox:AddButton({Text="Buy / Equip Best Now",Func=State.__rs_buyBestDumbellOnce})
+
+local tPull = PullBox:AddToggle("PAE_AutoPull",{Text="Auto Pull Egg",Default=Config.AutoPull})
+tPull:OnChanged(function(v) Config.AutoPull=v; queueSave() end)
+
+local eggDropdown = PullBox:AddDropdown("PAE_EggChoice",{
+    Text="Egg",
+    Values=eggChoices,
+    Default=Config.EggChoice,
+})
+eggDropdown:OnChanged(function(v) Config.EggChoice=tostring(v or "Any"); queueSave() end)
+
+local tSmartStrength = PullBox:AddToggle("PAE_SmartStrength",{Text="Smart Best Egg By Strength",Default=Config.SmartStrengthTarget})
+tSmartStrength:OnChanged(function(v) Config.SmartStrengthTarget=v; queueSave() end)
+
+local tPlace = PullBox:AddToggle("PAE_AutoPlace",{Text="Auto Place On Plot",Default=Config.AutoPlace})
+tPlace:OnChanged(function(v) Config.AutoPlace=v; queueSave() end)
+
+local tOpen = PullBox:AddToggle("PAE_AutoOpen",{Text="Auto Open Ready Eggs",Default=Config.AutoOpen})
+tOpen:OnChanged(function(v) Config.AutoOpen=v; queueSave() end)
+
+local tEquip = PullBox:AddToggle("PAE_EquipBest",{Text="Auto Equip Best Pets",Default=Config.AutoEquipBest})
+tEquip:OnChanged(function(v) Config.AutoEquipBest=v; queueSave() end)
+
+PullBox:AddButton({Text="Pull One Egg",Func=State.__rs_pullOnce})
+PullBox:AddButton({Text="Open Ready Egg",Func=State.__rs_openReadyEggOnce})
+
+local PetMain = PetsTab:AddLeftGroupbox("Pets")
+local SellBox = PetsTab:AddRightGroupbox("Smart Sell")
+local FuseBox = PetsTab:AddRightGroupbox("Fuse")
+
+local tCollect=PetMain:AddToggle("PAE_Collect",{Text="Auto Collect Earnings",Default=Config.AutoCollect})
+tCollect:OnChanged(function(v) Config.AutoCollect=v; queueSave() end)
+
+local tUpPets=PetMain:AddToggle("PAE_UpgradePets",{Text="Auto Upgrade Placed Pets",Default=Config.AutoUpgradePets})
+tUpPets:OnChanged(function(v) Config.AutoUpgradePets=v; queueSave() end)
+
+PetMain:AddButton({Text="Collect Earnings Now",Func=State.__rs_collectEarningsOnce})
+PetMain:AddButton({Text="Equip Best Now",Func=function() if requireReady() then remoteFire(R.EquipBest) end end})
+
+local tSell=SellBox:AddToggle("PAE_AutoSell",{Text="Auto Sell",Default=Config.AutoSell})
+tSell:OnChanged(function(v) Config.AutoSell=v; queueSave() end)
+
+local sellDD=SellBox:AddDropdown("PAE_SellRarity",{
+    Text="Sell Up To",
+    Values={"Common","Rare","Epic","Legendary","Mythic"},
+    Default=Config.SellMaxRarity,
+})
+sellDD:OnChanged(function(v) Config.SellMaxRarity=tostring(v or "Common"); queueSave() end)
+SellBox:AddLabel("Eggs, placed pets and detected favourites are protected.",true)
+SellBox:AddButton({Text="Sell One Matching Pet",Func=State.__rs_sellOneSafe})
+
+FuseBox:AddButton({Text="Place Held Pet To Fuse",Func=function()
+    if not requireReady() then return end
+    local uid=heldFriendUID()
+    if uid then remoteFire(R.PlaceFuse,uid) else notify("AliceHUB","Hold a pet first.") end
+end})
+FuseBox:AddButton({Text="Activate Fuse",Func=function()
+    if not requireReady() then return end
+    local ok,res=remoteFire(R.ActivateFuse)
+    notify("Fuse",ok and ("Result: "..tostring(res)) or "Failed")
+end})
+FuseBox:AddButton({Text="Claim Fuse",Func=function() if requireReady() then remoteFire(R.ClaimFuse) end end})
+
+local ProgBox=ProgressTab:AddLeftGroupbox("Progression")
+local RewardBox=ProgressTab:AddRightGroupbox("Rewards")
+
+local tRebirth=ProgBox:AddToggle("PAE_Rebirth",{Text="Auto Rebirth",Default=Config.AutoRebirth})
+tRebirth:OnChanged(function(v) Config.AutoRebirth=v; queueSave() end)
+
+local iStop=ProgBox:AddInput("PAE_StopRebirth",{Text="Stop At Rebirth (0 = no limit)",Default=tostring(Config.StopRebirth)})
+iStop:OnChanged(function(v) local n=tonumber(v); if n then Config.StopRebirth=math.max(0,n); queueSave() end end)
+
+local tCarry=ProgBox:AddToggle("PAE_Carry",{Text="Auto Upgrade Carry Limit",Default=Config.AutoCarry})
+tCarry:OnChanged(function(v) Config.AutoCarry=v; queueSave() end)
+
+local tGear=ProgBox:AddToggle("PAE_Gear",{Text="Auto Buy Affordable Gear",Default=Config.AutoBuyGear})
+tGear:OnChanged(function(v) Config.AutoBuyGear=v; queueSave() end)
+
+ProgBox:AddButton({Text="Rebirth Now",Func=State.__rs_rebirthOnce})
+ProgBox:AddButton({Text="Upgrade Carry Now",Func=State.__rs_carryUpgradeOnce})
+ProgBox:AddButton({Text="Buy Affordable Gear",Func=State.__rs_buyGearOnce})
+
+local tDaily=RewardBox:AddToggle("PAE_Daily",{Text="Auto Daily Reward",Default=Config.AutoDaily})
+tDaily:OnChanged(function(v) Config.AutoDaily=v; queueSave() end)
+local tGroup=RewardBox:AddToggle("PAE_Group",{Text="Auto Group Reward",Default=Config.AutoGroup})
+tGroup:OnChanged(function(v) Config.AutoGroup=v; queueSave() end)
+RewardBox:AddButton({Text="Claim Daily Now",Func=State.__rs_dailyOnce})
+RewardBox:AddButton({Text="Claim Group Now",Func=State.__rs_groupOnce})
+local tIndex=RewardBox:AddToggle("PAE_Index",{Text="Auto Claim Index",Default=Config.AutoClaimIndex})
+tIndex:OnChanged(function(v) Config.AutoClaimIndex=v; queueSave() end)
+RewardBox:AddButton({Text="Claim Index Now",Func=State.__rs_claimIndexOnce})
+
+local MoveBox=MoveTab:AddLeftGroupbox("Movement")
+local moveDD=MoveBox:AddDropdown("PAE_MoveMode",{
+    Text="Mode",Values={"TP","Tween","Walk"},Default=Config.MovementMode
+})
+moveDD:OnChanged(function(v) Config.MovementMode=tostring(v or "Tween"); queueSave() end)
+
+local iSpeed=MoveBox:AddInput("PAE_TweenSpeed",{Text="Tween Speed",Default=tostring(Config.TweenSpeed),Placeholder="300"})
+iSpeed:OnChanged(function(v) local n=tonumber(v); if n then Config.TweenSpeed=math.clamp(n,30,3000); queueSave() end end)
+
+local iWalk=MoveBox:AddInput("PAE_WalkTimeout",{Text="Walk Timeout",Default=tostring(Config.WalkTimeout)})
+iWalk:OnChanged(function(v) local n=tonumber(v); if n then Config.WalkTimeout=math.clamp(n,3,60); queueSave() end end)
+MoveBox:AddButton({Text="Go To Plot",Func=function() if requireReady() then moveToPosition(Base.Position) end end})
+local tBestWorld=MoveBox:AddToggle("PAE_BestWorld",{Text="Auto TP World Best",Default=Config.AutoBestWorld})
+tBestWorld:OnChanged(function(v) Config.AutoBestWorld=v; queueSave() end)
+MoveBox:AddButton({Text="TP World Best Now",Func=State.__rs_goBestWorldOnce})
+
+local ClientBox=SettingsTab:AddLeftGroupbox("Client")
+local ConfigBox=SettingsTab:AddRightGroupbox("Config")
+
+local tWhite=ClientBox:AddToggle("PAE_White",{Text="White Screen",Default=Config.WhiteScreen})
+tWhite:OnChanged(function(v) Config.WhiteScreen=v; State.__rs_setWhiteScreen(v); queueSave() end)
+
+local tAntiMonster=ClientBox:AddToggle("PAE_AntiMonster",{Text="Anti Hit / Anti Fling Monster",Default=Config.AntiMonsterHit})
+tAntiMonster:OnChanged(function(v) Config.AntiMonsterHit=v; queueSave() end)
+
+local tRejoin=ClientBox:AddToggle("PAE_Rejoin",{Text="Auto Rejoin",Default=Config.AutoRejoin})
+tRejoin:OnChanged(function(v) Config.AutoRejoin=v; queueSave() end)
+
+local iRejoin=ClientBox:AddInput("PAE_RejoinMin",{Text="Rejoin Minutes",Default=tostring(Config.RejoinMinutes)})
+iRejoin:OnChanged(function(v) local n=tonumber(v); if n then Config.RejoinMinutes=math.clamp(n,5,120); queueSave() end end)
+
+ConfigBox:AddButton({Text="Save Config",Func=function()
+    notify("AliceHUB",saveConfig() and "Config saved." or "Config save unavailable.")
+end})
+ConfigBox:AddButton({Text="Reset Config",Func=function()
+    for k,v in pairs(defaults) do Config[k]=v end
+    saveConfig()
+    notify("AliceHUB","Config reset. Re-execute to refresh controls.")
+end})
+
+local StatusBox=InfoTab:AddLeftGroupbox("Status")
+local AccountBox=InfoTab:AddRightGroupbox("Account")
+local GameBox=InfoTab:AddRightGroupbox("Game Info")
+
+local lblInit=StatusBox:AddLabel("Game Client: waiting...",true)
+local lblAction=StatusBox:AddLabel("Action: Loading...",true)
+local lblStats=StatusBox:AddLabel("Stats: waiting...",true)
+local lblEgg=StatusBox:AddLabel("Last Egg: -",true)
+local lblSmart=StatusBox:AddLabel("Smart Target: -",true)
+local lblWorld=StatusBox:AddLabel("Best World: -",true)
+local lblErr=StatusBox:AddLabel("Last Error: -",true)
+
+AccountBox:AddLabel("Username : "..tostring(LocalPlayer.Name),true)
+local executorName="Unknown"
+pcall(function()
+    executorName=(identifyexecutor and identifyexecutor())
+        or (getexecutorname and getexecutorname())
+        or executorName
+end)
+AccountBox:AddLabel("Executor : "..tostring(executorName),true)
+AccountBox:AddLabel("Status : Active",true)
+
+GameBox:AddLabel("Game : Pull An Egg",true)
+GameBox:AddLabel("PlaceId : "..tostring(game.PlaceId),true)
+GameBox:AddLabel("AliceHUB Gothic UI · V6 Plot-Step Relay Backend",true)
+
+-- ============================================================
+-- Backend initialization AFTER UI
+-- ============================================================
+
 task.spawn(function()
-    while Runtime.alive do
-        if StatusBackend and type(StatusBackend.SetText) == "function" then
-            StatusBackend:SetText("Backend: " .. (Runtime.backendReady and "ready" or (Runtime.backendError and "error" or "loading")))
+    local deadline = os.clock() + 25
+
+    while State.Running and os.clock() < deadline do
+        State.InitStatus = "Finding Network remotes..."
+
+        local networkModule = findNetworkModule()
+        if networkModule then
+            RemoteFolder = networkModule:FindFirstChild("Remotes")
         end
-        if StatusAction and type(StatusAction.SetText) == "function" then StatusAction:SetText("Action: " .. tostring(Runtime.action)) end
-        if StatusTarget and type(StatusTarget.SetText) == "function" then StatusTarget:SetText("Target: " .. tostring(Runtime.target)) end
-        if StatusHolding and type(StatusHolding.SetText) == "function" then
-            local item = getHoldingItem()
-            local reward = getYeetReward()
-            local text = "None"
-            if type(reward) == "table" then
-                local chicken = reward.chicken or reward.egg or reward.reward
-                if type(chicken) == "table" and chicken.name then
-                    text = tostring(chicken.name)
-                else
-                    text = "Stolen Chicken"
+
+        if not RemoteFolder then
+            -- fallback: locate a Remotes folder whose parent is a Network ModuleScript
+            local shared = ReplicatedStorage:FindFirstChild("SharedModules")
+            if shared then
+                for _, obj in ipairs(shared:GetDescendants()) do
+                    if obj:IsA("Folder") and obj.Name == "Remotes"
+                        and obj.Parent and obj.Parent:IsA("ModuleScript")
+                        and obj.Parent.Name == "Network" then
+                        RemoteFolder = obj
+                        break
+                    end
                 end
-            elseif type(item) == "table" then
-                if item.chicken and item.chicken.name then text = tostring(item.chicken.name)
-                elseif item.egg and item.egg.name then text = tostring(item.egg.name)
-                else text = tostring(item.type or "Yes") end
-            elseif item ~= nil then
-                text = "Yes"
             end
-            StatusHolding:SetText("Holding: " .. text)
         end
-        if StatusPen and type(StatusPen.SetText) == "function" then
-            local count, max = getPenCapacity()
-            StatusPen:SetText(string.format("Pen: %s/%s", tostring(count or "?"), tostring(max or "?")))
+
+        if RemoteFolder then
+            DataGetRemote = RemoteFolder:FindFirstChild("Data: Get")
+        end
+
+        State.InitStatus = "Finding player plot..."
+        MyPlot = findMyPlot() or MyPlot
+
+        if MyPlot then
+            Base = MyPlot:FindFirstChild("Base") or Base
+        end
+
+        Live = workspace:FindFirstChild("Live") or Live
+        if Live then
+            WorldFriends = Live:FindFirstChild("Friends") or WorldFriends
+            PlayerFriendsRoot = Live:FindFirstChild("PlayerFriends") or PlayerFriendsRoot
+            if PlayerFriendsRoot then
+                MyPlayerFriends = PlayerFriendsRoot:FindFirstChild(LocalPlayer.Name) or MyPlayerFriends
+            end
+        end
+
+        State.InitStatus = "Loading game database..."
+        if not next(Database) then
+            local dbModule = findDatabaseModule()
+            if dbModule then
+                local okDB, db = pcall(require, dbModule)
+                if okDB and type(db) == "table" then
+                    Database = db
+                end
+            end
+
+            if not next(Database) then
+                local recovered = recoverDatabaseFromGC()
+                if recovered then Database = recovered end
+            end
+
+            Lib.Database = Database
+        end
+
+        if RemoteFolder and DataGetRemote and MyPlot and Base and Live and WorldFriends then
+            R.ActivateDumbell = makeRemote("Activate Dumbell", "RemoteEvent")
+            R.BuyDumbell = makeRemote("Buy Dumbell", "RemoteEvent")
+            R.EquipDumbell = makeRemote("Equip Dumbell", "RemoteEvent")
+            R.PlaceFriend = makeRemote("Place Friend", "RemoteEvent")
+            R.EquipBest = makeRemote("Equip Best", "RemoteEvent")
+            R.CollectEarnings = makeRemote("Collect Earnings", "RemoteEvent")
+            R.UpgradeCarry = makeRemote("Upgrade Carry Limit", "RemoteEvent")
+            R.SellFriend = makeRemote("Sell Friend From Inventory", "RemoteEvent")
+            R.SellAll = makeRemote("Sell All Friends", "RemoteEvent")
+            R.OpenLucky = makeRemote("Open Lucky Block", "RemoteEvent")
+            R.ClaimDaily = makeRemote("Claim Daily Reward", "RemoteEvent")
+            R.ClaimGroup = makeRemote("Claim Group Reward", "RemoteEvent")
+            R.ClaimIndex = makeRemote("Claim Index Reward", "RemoteFunction")
+            R.TeleportSpawn = makeRemote("Teleport To Spawn", "RemoteEvent")
+            R.TeleportWorld = makeRemote("Teleport To World", "RemoteEvent")
+            R.HoldingFriend = makeRemote("Holding Friend", "RemoteEvent")
+            R.Rebirth = makeRemote("Rebirth", "RemoteEvent")
+            R.BuyGear = makeRemote("Buy Gear", "RemoteEvent")
+            R.PickupFriend = makeRemote("Pickup Friend", "RemoteEvent")
+            R.UpgradeFriend = makeRemote("Upgrade Friend", "RemoteEvent")
+            R.DropFriend = makeRemote("Drop Friend", "RemoteEvent")
+            R.PlaceFuse = makeRemote("Place to Fuse", "RemoteEvent")
+            R.RemoveFuse = makeRemote("Remove from Fuse", "RemoteEvent")
+            R.ActivateFuse = makeRemote("Activate Fuse", "RemoteFunction")
+            R.ClaimFuse = makeRemote("Claim Fuse", "RemoteEvent")
+
+            if R.HoldingFriend and R.HoldingFriend:IsA("RemoteEvent") and not State.HoldingConnection then
+                State.HoldingConnection = R.HoldingFriend.OnClientEvent:Connect(function(on, uid)
+                    State.Holding = on == true
+                    if on == true and uid ~= nil then
+                        if type(uid) == "table" then
+                            uid = uid.friendUID or uid.FriendUID or uid.uid or uid.UID or uid.id or uid.Id
+                        end
+                        State.HeldUID = uid ~= nil and tostring(uid) or nil
+                    else
+                        State.HeldUID = nil
+                    end
+                end)
+            end
+
+            -- Test Data:Get directly. This proves backend communication is alive.
+            local d = getData(true)
+            if type(d) == "table" then
+                local newEggs = rebuildEggChoices()
+                eggDropdown:SetValues(newEggs)
+                if table.find(newEggs, Config.EggChoice) then
+                    eggDropdown:SetValue(Config.EggChoice)
+                else
+                    Config.EggChoice = "Any"
+                    eggDropdown:SetValue("Any")
+                end
+
+                local foundCount = 0
+                for _, remote in pairs(R) do
+                    if typeof(remote) == "Instance" then foundCount += 1 end
+                end
+
+                State.Ready = true
+                State.InitStatus = ("Ready · Direct Remotes %d"):format(foundCount)
+                State.Action = "Idle"
+                State.LastError = "-"
+                notify("AliceHUB Ready", "Pull An Egg direct backend connected.", 4)
+                return
+            else
+                State.InitStatus = "Data:Get found, waiting for player data..."
+            end
+        else
+            local parts = {}
+            if not RemoteFolder then parts[#parts+1] = "Remotes" end
+            if not DataGetRemote then parts[#parts+1] = "Data:Get" end
+            if not MyPlot then parts[#parts+1] = "Plot" end
+            if not Base then parts[#parts+1] = "Base" end
+            if not WorldFriends then parts[#parts+1] = "Friends" end
+            State.InitStatus = "Waiting: " .. table.concat(parts, ", ")
+        end
+
+        task.wait(0.35)
+    end
+
+    if not State.Ready then
+        State.InitStatus = "Backend init failed"
+        if State.LastError == "-" then
+            State.LastError = "Direct remotes/data/plot not resolved"
+        end
+        notify("AliceHUB", "UI work, backend belum connect. Cek tab Info.", 7)
+    end
+end)
+
+-- ============================================================
+-- Workers
+-- ============================================================
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoTrain and not State.Pulling
+            and not isHoldingFriend() then
+            remoteFire(R.ActivateDumbell)
+        end
+        task.wait(math.clamp(tonumber(Config.TrainDelay) or 0.5,0.05,5))
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoBuyBestDumbell and not State.Pulling then pcall(State.__rs_buyBestDumbellOnce) end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoPull then pcall(State.__rs_pullOnce) end
+        task.wait(Config.AutoPull and 0.35 or 1)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready then
+            if Config.AutoOpen then pcall(State.__rs_openReadyEggOnce) end
+            if Config.AutoEquipBest and not isHoldingFriend() then
+                pcall(function() remoteFire(R.EquipBest) end)
+            end
+        end
+        task.wait(2)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoCollect then pcall(State.__rs_collectEarningsOnce) end
+        task.wait(2.5)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready then
+            if Config.AutoUpgradePets then pcall(State.__rs_upgradePetOnce) end
+            if Config.AutoSell then pcall(State.__rs_sellOneSafe) end
+        end
+        task.wait(0.8)
+    end
+end)
+
+task.spawn(function()
+    local groupClock=0
+    while State.Running do
+        if State.Ready then
+            if Config.AutoRebirth then pcall(State.__rs_rebirthOnce) end
+            if Config.AutoCarry then pcall(State.__rs_carryUpgradeOnce) end
+            if Config.AutoDaily then pcall(State.__rs_dailyOnce) end
+            if Config.AutoBuyGear then pcall(State.__rs_buyGearOnce) end
+            if Config.AutoGroup and os.clock()-groupClock>=30 then
+                groupClock=os.clock()
+                pcall(State.__rs_groupOnce)
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoClaimIndex then pcall(State.__rs_claimIndexOnce) end
+        task.wait(6)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if State.Ready and Config.AutoBestWorld and not State.Pulling and not isHoldingFriend() then
+            pcall(State.__rs_goBestWorldOnce)
+        end
+        task.wait(3)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        if Config.AntiMonsterHit then pcall(State.__rs_applyAntiMonsterHit) end
+        task.wait(0.03)
+    end
+end)
+
+task.spawn(function()
+    local startedAt=os.clock()
+    while State.Running do
+        if Config.AutoRejoin then
+            local target=math.max(5,tonumber(Config.RejoinMinutes) or 17)*60
+            if os.clock()-startedAt>=target then
+                State.Action="Rejoining"
+                pcall(function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end)
+                return
+            end
+        else
+            startedAt=os.clock()
+        end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while State.Running do
+        lblInit:SetText("Game Client: "..tostring(State.InitStatus))
+        lblAction:SetText("Action: "..tostring(State.Action))
+        lblEgg:SetText("Last Egg: "..tostring(State.LastEgg))
+        lblSmart:SetText("Smart Target: "..tostring(State.LastEggRequirement))
+        lblWorld:SetText("Best World: "..tostring(State.BestWorld))
+        lblErr:SetText("Last Error: "..tostring(State.LastError))
+
+        local d=getData()
+        if d then
+            lblStats:SetText(
+                ("Cash: %s\nStrength: %s\nRebirth: %s")
+                :format(tostring(d.Cash or 0),tostring(d.Strength or 0),tostring(d.Rebirth or 0))
+            )
+        else
+            lblStats:SetText("Stats: waiting...")
         end
         task.wait(0.5)
     end
 end)
 
--- Apply loaded visual/performance settings after controls exist.
-if Config.WhiteScreen then task.defer(function() Runtime.__rs_setWhiteScreen(true) end) end
-if Config.UltraPerformance then task.defer(function() Runtime.__rs_setUltraPerformance(true) end) end
+State.__rs_setWhiteScreen(Config.WhiteScreen)
 
-Runtime.__rs_cleanup = function()
-    if not Runtime.alive then return end
-    Runtime.alive = false
-    cancelTween()
-    saveConfig()
-    Runtime.__rs_restoreCharacterManager()
-    Runtime.__rs_disconnectUltraConnections()
-    Runtime.__rs_destroyWhiteScreen()
-    Config.Noclip = false
-    pcall(Runtime.__rs_applyNoclip)
-    for _, conn in ipairs(Runtime.connections) do pcall(function() conn:Disconnect() end) end
-    table.clear(Runtime.connections)
-    if logoGui and logoGui.Parent then pcall(function() logoGui:Destroy() end) end
-    pcall(function() Library:Unload() end)
-    if ENV.AliceHUB_StealAChicken_Cleanup == Runtime.__rs_cleanup then ENV.AliceHUB_StealAChicken_Cleanup = nil end
-end
-
-ENV.AliceHUB_StealAChicken_Cleanup = Runtime.__rs_cleanup
-ENV.AliceHUB_StealAChicken = {
-    Cleanup = Runtime.__rs_cleanup,
-    Config = Config,
-    State = Runtime,
-    StealBest = function()
-        local target = Runtime.__rs_findBestTarget()
-        if target then return Runtime.__rs_stealTarget(target) end
-        return false
+ENV.AliceHUB_PullAnEgg = {
+    Config=Config,
+    State=State,
+    Remotes=R,
+    PullOnce=State.__rs_pullOnce,
+    BuyBestDumbellOnce=State.__rs_buyBestDumbellOnce,
+    OpenReadyEggOnce=State.__rs_openReadyEggOnce,
+    CollectEarningsOnce=State.__rs_collectEarningsOnce,
+    RebirthOnce=State.__rs_rebirthOnce,
+    ClaimIndexOnce=State.__rs_claimIndexOnce,
+    GoBestWorldOnce=State.__rs_goBestWorldOnce,
+    Stop=function()
+        State.Running=false
+        if State.HoldingConnection then pcall(function() State.HoldingConnection:Disconnect() end); State.HoldingConnection=nil end
+        moveSerial += 1
+        if activeTween then pcall(function() activeTween:Cancel() end) end
+        State.__rs_setWhiteScreen(false)
+        pcall(function() Library:Unload() end)
+        pcall(function() logoGui:Destroy() end)
     end,
 }
 
-print("[AliceHUB] Steal a Chicken loaded")
+ENV.AliceHUB_PullAnEgg_Cleanup=function()
+    local obj=ENV.AliceHUB_PullAnEgg
+    if obj and type(obj.Stop)=="function" then pcall(obj.Stop) end
+    ENV.AliceHUB_PullAnEgg=nil
+end
+
+notify("AliceHUB","Pull An Egg V6 Plot-Step Relay loaded · connecting backend...",4)
+print("AliceHUB · Pull An Egg · V6 PLOT-STEP RELAY loaded")
